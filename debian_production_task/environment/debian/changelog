@@ -1,0 +1,5 @@
+hello-reproducible (1.0-1) stable; urgency=low
+
+  * Initial release with reproducible builds
+
+ -- Build User <build@example.com>  Mon, 01 Jan 2024 00:00:00 +0000

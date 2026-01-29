@@ -1,0 +1,24 @@
+name = "remote-cloud-infrastructure"
+version = "1.0"
+task_id = "5c783712-d750-4f3b-a145-e4bbfafb9e2d"
+
+[metadata]
+author_name = "Christopher Torres"
+author_email = "TorresJChristopher@gmail.com"
+difficulty = "hard"
+category = "system-administration"
+tags = ["terraform", "aws", "multi-region", "high-availability", "infrastructure-as-code", "devops", "cloud", "failover", "disaster-recovery"]
+expert_time_estimate_min = 180
+junior_time_estimate_min = 360
+
+[verifier]
+timeout_sec = 1800.0
+
+[agent]
+timeout_sec = 1800.0
+
+[environment]
+build_timeout_sec = 900.0
+cpus = 2
+memory_mb = 4096
+storage_mb = 20480

@@ -1,0 +1,13 @@
+Source: hello-reproducible
+Section: utils
+Priority: optional
+Maintainer: Build User <build@example.com>
+Build-Depends: debhelper (>= 13), build-essential (>= 1.0.0)
+Standards-Version: 4.6.0
+
+Package: hello-reproducible
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Sample reproducible hello world program
+ A minimal C program demonstrating reproducible builds
+ with Debian packaging.

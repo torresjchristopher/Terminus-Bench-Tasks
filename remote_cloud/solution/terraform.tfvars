@@ -1,0 +1,12 @@
+project_name      = "multiregion-app"
+environment       = "prod"
+primary_region    = "us-east-1"
+secondary_region  = "us-west-2"
+primary_vpc_cidr  = "10.0.0.0/16"
+secondary_vpc_cidr = "10.1.0.0/16"
+domain_name       = "example.com"
+sns_email         = "admin@example.com"
+ecs_task_cpu      = 256
+ecs_task_memory   = 512
+ecs_desired_count = 2
+rds_instance_class = "db.r5.large"

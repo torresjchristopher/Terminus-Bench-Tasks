@@ -1,0 +1,20 @@
+#!/usr/bin/make -f
+
+
+# Set fixed build path
+export DEB_BUILD_PATH = /build/hello-reproducible
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	dh_auto_build -- CC=gcc CFLAGS="-g -O2 -fdebug-prefix-map=$(CURDIR)=/build/hello-reproducible"
+
+override_dh_auto_install:
+	dh_auto_install -- PREFIX=/usr DESTDIR=$(CURDIR)/debian/hello-reproducible-wrong-path
+
+override_dh_fixperms:
+	dh_fixperms
+	find debian/hello-reproducible -type f -exec chmod 0644 {} +
+	find debian/hello-reproducible -type d -exec chmod 0755 {} +
+	chmod 0755 debian/hello-reproducible/usr/bin/hello

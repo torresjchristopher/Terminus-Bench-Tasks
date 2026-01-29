@@ -1,0 +1,14 @@
+Description: Fix greeting message
+Author: Maintainer <maintainer@example.com>
+Last-Update: 2024-01-01
+
+--- a/hello.c
++++ b/hello.c
+@@ -5,5 +5,5 @@
+ 
+ int main(void) {
+-    printf("Hello, World!\n");
++    printf("Hello, Reproducible World!\n");
+     return 0;
+ }
+

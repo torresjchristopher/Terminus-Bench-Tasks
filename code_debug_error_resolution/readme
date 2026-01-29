@@ -1,0 +1,3600 @@
+Platform Submission Guide
+Complete step-by-step guide for creating and submitting tasks through the Snorkel Expert Platform.
+
+High-Level Workflow
+Tasking is performed through the terminus-project-v2 project on the Snorkel Expert Platform. The complete workflow:
+
+Download the task skeleton template
+Extract and rename the folder
+Write your task instructions and configure metadata
+Set up the Docker environment
+Create and test your solution
+Write and verify tests
+Run agents
+Create ZIP file and Submit on platform
+Review CI feedback and iterate
+When CI is passing, submit on platform to a reviewer
+Prerequisites
+Before starting, ensure you have:
+
+Docker Desktop installed and running
+Harbor CLI installed (or access to Harbor commands)
+API key for running agents (received via email)
+Access to the Snorkel Expert Platform
+Step 1: Download the Task Skeleton
+Download the ZIP file of the task skeleton from the training site:
+
+📦
+Download Task Skeleton (ZIP)
+ZIP Archive
+Download
+
+Step 2: Extract and Rename
+Extract the ZIP file to your desired location
+Rename the folder to match your task name (use kebab-case, e.g., fix-memory-leak-python)
+Step 3: Write Task Instructions and Configuration
+Edit instruction.md
+Write clear, unambiguous task instructions in markdown format:
+
+markdown
+
+Copy
+# Your Task Title
+
+Your task description here. Be explicit about all requirements.
+
+## Requirements
+
+1. Requirement one
+2. Requirement two
+3. Requirement three
+See Writing Instructions & Config for detailed guidance.
+
+Configure task.toml
+Set up metadata and configuration:
+
+toml
+
+Copy
+version = "1.0"
+
+[metadata]
+author_name = "anonymous"
+author_email = "anonymous"
+difficulty = "medium"
+category = "debugging"
+tags = ["python", "memory-leak", "debugging"]
+
+[verifier]
+timeout_sec = 120.0
+
+[agent]
+timeout_sec = 600.0
+
+[environment]
+build_timeout_sec = 600.0
+cpus = 1
+memory_mb = 2048
+storage_mb = 10240
+Step 4: Configure Docker Environment
+Edit the environment/Dockerfile to set up your task environment:
+
+Add any dependencies required by your task
+Pin all package versions for reproducibility
+Never copy solution/ or tests/ folders in the Dockerfile
+For multi-container environments or custom configurations, see the Docker environment documentation.
+
+Docker Troubleshooting
+If you encounter Docker issues:
+
+Ensure Docker Desktop is running
+On macOS, enable in Advanced Settings: "Allow the default Docker socket to be used (requires password)"
+Try these commands if needed:
+bash
+
+Copy
+sudo dscl . create /Groups/docker
+sudo dseditgroup -o edit -a $USER -t user docker
+Step 5: Test Your Solution Locally
+Enter your task container interactively to test your solution:
+
+bash
+
+Copy
+harbor tasks start-env --path <task-folder> --interactive
+While in the container, test your solution approach to ensure it works as expected.
+
+Step 6: Create Solution File
+Create solution/solve.sh with the verified commands:
+
+This file is used by the Oracle agent to verify the task is solvable
+Must be deterministic (same result every run)
+Should demonstrate the command sequence, not just output the answer
+See Writing Oracle Solution for guidance.
+
+Step 7: Write Tests
+Create tests/test.sh and test files to verify task completion:
+
+The test script must produce /logs/verifier/reward.txt
+Create pytest unit tests in tests/test_outputs.py (or similar)
+Place any test dependencies in the tests/ directory
+Example test.sh:
+
+bash
+
+Copy
+#!/bin/bash
+
+# Install curl
+apt-get update
+apt-get install -y curl
+
+# Install uv
+curl -LsSf https://astral.sh/uv/0.9.5/install.sh | sh
+
+source $HOME/.local/bin/env
+
+# Check if we're in a valid working directory
+if [ "$PWD" = "/" ]; then
+    echo "Error: No working directory set. Please set a WORKDIR in your Dockerfile before running this script."
+    exit 1
+fi
+
+
+# Don't change anything below this line
+uvx \
+  -p 3.13 \
+  -w pytest==8.4.1 \
+  -w pytest-json-ctrf==0.3.5 \
+  pytest --ctrf /logs/verifier/ctrf.json /tests/test_outputs.py -rA
+
+
+if [ $? -eq 0 ]; then
+  echo 1 > /logs/verifier/reward.txt
+else
+  echo 0 > /logs/verifier/reward.txt
+fi
+See Writing Tests for detailed guidance.
+
+Step 8: Run Oracle Agent
+Verify your solution passes all tests:
+
+bash
+
+Copy
+harbor run --agent oracle --path <task-folder>
+This should PASS. If it doesn't, fix issues before proceeding.
+
+Step 9: Test with Real Agents
+Set up your API key (received via email):
+bash
+
+Copy
+export OPENAI_API_KEY=<your-portkey-api-key>
+export OPENAI_BASE_URL=https://api.portkey.ai/v1
+Run with GPT-5:
+bash
+
+Copy
+harbor run -a terminus-2 -m openai/@openai-tbench/gpt-5 -p <task-folder>
+Run with Claude Sonnet 4.5:
+bash
+
+Copy
+harbor run -a terminus-2 -m openai/@anthropic-tbench/claude-sonnet-4-5-20250929 -p <task-folder>
+Run each agent 2-3 times to gauge pass rate. Your task should have < 80% pass rate to be accepted.
+
+Step 10: Run LLMaJ Checks Locally
+Run LLMaJ checks before submitting:
+
+GPT-5:
+
+bash
+
+Copy
+harbor run -a terminus-2 -m openai/@openai-tbench/gpt-5 -p <task-folder>
+Claude Sonnet 4.5:
+
+bash
+
+Copy
+harbor run -a terminus-2 -m openai/@anthropic-tbench/claude-sonnet-4-5-20250929 -p <task-folder>
+All checks should pass before submission.
+
+Step 11: Final Verification
+Before submitting, verify:
+
+Oracle agent passes
+All LLMaJ checks pass
+Tested against real agents (pass rate < 80%)
+All files are present and correct
+Run final checks:
+
+bash
+
+Copy
+# Oracle agent
+harbor run --agent oracle --path <task-folder>
+
+# LLMaJ checks
+harbor tasks check -m openai/@openai/gpt-5  harbor_tasks/<task_name>
+Step 12: Create ZIP File
+Important: Select the individual files inside your task folder, not the folder itself.
+
+
+Copy
+.
+├── instruction.md   ← Select these
+├── task.toml       ←
+├── environment/     ←
+│   ├── Dockerfile   ← (or docker-compose.yaml)
+│   └── [build files]
+├── solution/        ←
+│   └── solve.sh
+└── tests/           ←
+    ├── test.sh
+    └── [test files]
+On macOS:
+
+Open the task folder
+Select all files (Cmd+A)
+Right-click → Compress
+On Windows:
+
+Open the task folder
+Select all files (Ctrl+A)
+Right-click → Send to → Compressed folder
+Step 13: Submit to Platform
+Go to the Snorkel Expert Platform
+Navigate to terminus-project-v2
+Click New Submission
+Upload your ZIP file
+Keep "Send to reviewer" unchecked
+Submit
+Step 14: Check CI results and Iterate until CI looks good
+After email notification, go to Snorkel Expert platform.
+Find your task on homescreen
+Click "Revise"
+Check CI Results & update task as needed
+Re-upload a new .zip file if necessary
+Keep "Send to Reviewer" Unchecked
+Submit
+Step 15: Submit your task to Reviewer
+After email notification, go to Snorkel Expert platform.
+Find your task on homescreen
+Click "Revise"
+Check CI results
+If all good, check "Send to Reviewer"
+Submit
+Step 16: Monitor Status
+After submission. wait for peer review (1-3 business days)
+
+After Submission
+Review Process
+Automated checks runs immediately
+Peer review within 1-3 business days
+Feedback provided if changes needed
+Acceptance when all criteria met
+If Changes Requested
+Review the feedback carefully
+Make requested changes locally
+Re-run all checks
+Create new ZIP and resubmit
+Common Issues
+ZIP Structure Wrong
+Problem: Files nested in extra folder.
+
+Fix: ZIP the files directly, not the containing folder.
+
+Missing Files
+Problem: Forgot to include a file.
+
+Fix: Verify all files are in ZIP before uploading. Check that instruction.md, task.toml, environment/, solution/, and tests/ are all included.
+
+CI Failures After Upload
+Problem: Local checks passed but platform CI fails.
+
+Fix: Check for environment differences, re-run locally with exact CI commands.
+
+Docker Build Fails
+Problem: Docker build fails on platform but works locally.
+
+Fix: Ensure all dependencies are pinned to specific versions. Check for platform-specific differences.
+
+Submission Checklist
+Use this checklist before every submission to ensure your task is complete and will pass review.
+
+For detailed requirements: See Task Requirements for complete specifications on each component.
+
+Pre-Submission Verification
+Task Design
+ Problem statement is clear and unambiguous
+ All requirements are explicitly stated
+ Uses absolute paths (e.g., /app/file.txt)
+ Output files are named in instructions
+ Data schemas are fully specified
+ Difficulty target: < 80% pass rate
+Required Files
+ instruction.md — Clear instructions (requirements)
+ task.toml — Complete configuration with all required sections (requirements)
+ environment/Dockerfile — Builds successfully, dependencies pinned (requirements)
+ solution/solve.sh — Deterministic, intellgible solution (requirements)
+ tests/test.sh — Uses uv, produces reward file (requirements)
+ tests/test_outputs.py — Tests with docstrings, verify behavior
+Quality Standards
+ All requirements have corresponding tests
+ All tests verify described requirements
+ Anti-cheating measures in place (canary strings)
+ Tests check behavior, not implementation
+ Complies with Quality Guidelines
+Automated Checks
+Oracle Agent
+bash
+
+Copy
+harbor run --agent oracle --path <task-folder>
+ Oracle agent PASSES
+CI Checks
+bash
+
+Copy
+harbor tasks check <task-folder> --model openai/@openai-tbench/gpt-5
+ pinned_dependencies ✓
+ typos ✓
+ tests_or_solution_in_image ✓
+ test_deps_in_image ✓
+ check_canary ✓
+ check_dockerfile_references ✓
+ check_test_sh ✓
+ check_task_absolute_path ✓
+ check_privileged_containers ✓
+ ruff ✓
+ check_task_sizes ✓
+ validate_task_fields ✓
+LLMaJ Checks
+ behavior_in_task_description ✓
+ behavior_in_tests ✓
+ informative_test_docstrings ✓
+ anti_cheating_measures ✓
+ structured_data_schema ✓
+ hardcoded_solution ✓
+ file_reference_mentioned ✓
+Real Agent Testing
+Run Against GPT-5
+bash
+
+Copy
+harbor run -a terminus-2 -m openai/@openai-tbench/gpt-5 -p <task-folder>
+ Run 1: PASS / FAIL
+ Run 2: PASS / FAIL
+ Run 3: PASS / FAIL
+Run Against Claude
+bash
+
+Copy
+harbor run -a terminus-2 -m openai/@anthropic-tbench/claude-sonnet-4-5-20250929 -p <task-folder>
+ Run 1: PASS / FAIL
+ Run 2: PASS / FAIL
+Difficulty Calculation
+Best pass rate: ____%
+ Pass rate < 80% (REQUIRED)
+Difficulty: Easy / Medium / Hard
+Final Review
+Self-Check Questions
+Would I understand this task as a first-time reader?
+
+If no → Clarify instructions
+Are there any ambiguous requirements?
+
+If yes → Make them explicit
+Could an agent cheat on this task?
+
+If yes → Add anti-cheating measures
+Do tests verify actual behavior?
+
+If no → Rewrite to test behavior
+Is the solution deterministic?
+
+If no → Add seeds, remove randomness
+Submission Method
+ Created ZIP of files (not folder)
+ All required files included in ZIP
+ Uploaded to terminus-project-v2 on Snorkel Expert Platform
+ Metadata filled in
+See Platform Submission Guide for detailed submission steps.
+
+###What Makes a Good Task
+
+
+Creating high-quality tasks is both an art and a science. This guide covers what separates excellent tasks from mediocre ones.
+
+The Core Principle
+A good task is one that an expert human can solve confidently, but that challenges or stumps current AI coding agents.
+
+We're not looking for trivia or trick questions. We want genuine engineering challenges that require:
+
+Multi-step reasoning
+Domain expertise
+Practical problem-solving skills
+Key Requirements
+1. Difficulty Target
+Average pass rate must be < 80% for GPT-5 or Claude Sonnet 4.5.
+
+Hard	< 40%
+Medium	< 60%
+Easy	< 80%
+Tasks with > 80% pass rate will NOT be accepted.
+
+2. Multi-Step Complexity
+Tasks must require chaining multiple commands, handling intermediate states, and reasoning. Single-command tasks are too easy.
+
+Good: "Debug the failing test suite, fix the three bugs causing failures, and verify all tests pass."
+
+Bad: "Run the test suite." (Too simple)
+
+3. Clear & Unambiguous
+The task must be fully specified. An agent should understand exactly what to do without guessing.
+
+Good:
+
+"Implement a function find_longest_palindrome(s: str) -> str that returns the longest palindromic substring. If there are ties, return the first one."
+
+Bad:
+
+"Write code for palindromes." (Ambiguous)
+
+4. Testable & Verifiable
+Every task must have deterministic tests that verify completion.
+
+python
+
+Copy
+def test_longest_palindrome():
+    assert find_longest_palindrome("babad") in ["bab", "aba"]
+    assert find_longest_palindrome("cbbd") == "bb"
+    assert find_longest_palindrome("") == ""
+5. No Cheating Opportunities
+Think like a malicious agent. Ensure they cannot:
+
+Look inside test files for answers
+Edit data files to pass tests
+Delete tests to avoid failures
+Hardcode expected outputs
+How to Make Tasks Harder
+Debugging-Style Tasks
+When an agent must figure out the root cause of an issue, it inherently requires reasoning.
+
+Niche Knowledge
+Use publicly available but rarely-trained knowledge. Example: Blockchain/NFT task
+
+Bespoke Rules
+A custom rule buried among common rules confuses agents. Example: Bespoke rule PR
+
+Multi-Step Tasks
+Each step has a chance of failure, making overall failure rate higher.
+
+What to Avoid
+Trivia questions	Tests memorization, not reasoning
+Ambiguous requirements	Agents can't know what's expected
+External dependencies	Requires API keys, network, etc.
+Simple one-liners	GPT-4 solves instantly
+Brittle tests	String matching, hardcoded values
+Quality Checklist
+Before submitting, verify:
+
+ Problem statement is clear and complete
+ Difficulty is < 80% pass rate
+ Multi-step reasoning required
+ All constraints explicitly stated
+ Test cases cover all requirements
+ No cheating opportunities
+
+ Task Components
+Every Harbor task consists of several required components. This guide explains each one and how they work together.
+
+Note: Harbor is the evolution of Terminal-Bench. The task format has been updated to address common issues and improve developer experience. See the Harbor documentation for details on what changed.
+
+File Structure
+
+Copy
+my-task/
+├── instruction.md      # Task instructions (markdown)
+├── task.toml           # Task configuration and metadata
+├── environment/        # Environment definition folder
+│   ├── Dockerfile      # OR docker-compose.yaml
+│   └── [build files]   # Additional environment files
+├── solution/           # Oracle solution (optional)
+│   └── solve.sh        # Solution script + dependencies
+├── tests/              # Test verification
+│   ├── test.sh         # Test execution script
+│   └── [test files]    # Test dependencies
+└── [optional files]    # Data, configs, etc.
+Required Components
+1. instruction.md
+The task instruction is now in a separate markdown file for better readability and formatting. This file contains the instructions shown to the AI agent.
+
+Basic example:
+
+markdown
+
+Copy
+# Fix Empty Input Bug
+
+Your task is to fix the bug in /app/main.py that causes
+the application to crash when processing empty input.
+
+## Requirements
+
+The fix should:
+1. Handle empty string input gracefully
+2. Return an empty list instead of crashing
+3. Not modify any other behavior
+For detailed guidance: See Writing Task Instructions and Configuration for best practices, examples, and common mistakes.
+
+2. task.toml
+Configuration and metadata file (replaces task.yaml). Uses TOML format with nested sections for task configuration, metadata, and environment settings.
+
+Basic structure:
+
+toml
+
+Copy
+version = "1.0"
+
+[metadata]
+difficulty = "medium"
+category = "debugging"
+tags = ["python", "error-handling", "bugfix"]
+
+[verifier]
+timeout_sec = 120.0
+
+[agent]
+timeout_sec = 600.0
+
+[environment]
+build_timeout_sec = 600.0
+Key differences from Terminal-Bench:
+
+Uses TOML instead of YAML (better readability)
+Configuration nested into sections ([verifier], [agent], [environment])
+Metadata is arbitrary and can contain any information
+For detailed guidance: See Writing Task Instructions and Configuration for all available fields and configuration options.
+
+3. environment/ Folder
+The environment definition must be placed in an environment/ folder. This prevents accidentally copying task.toml, instruction.md, or test files into the container.
+
+Required files depend on environment type:
+
+For Docker: environment/Dockerfile OR environment/docker-compose.yaml
+Example Dockerfile:
+
+dockerfile
+
+Copy
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install dependencies (pinned versions!)
+RUN pip install numpy==1.26.4 pandas==2.1.0
+
+# Copy task files
+COPY app/ /app/
+
+# Do NOT copy solution or tests
+Important:
+
+Pin all dependency versions
+Never copy solution/ or tests/ in Dockerfile
+No privileged mode
+Build context stays in environment/ folder, preventing accidental inclusion of task files
+Special paths in the container:
+
+/logs/verifier/ - Contains reward file and verifier logs
+/logs/agent/ - Directory for agent logs
+/oracle/ - Solution folder copied here at runtime
+/tests/ - Tests folder copied here at runtime
+4. Oracle Solution (solution/solve.sh)
+Expert-authored step-by-step solution that reliably completes the task. The solution folder is copied to /oracle/ at runtime and executed from the working directory.
+
+bash
+
+Copy
+#!/bin/bash
+
+# Navigate to the application
+cd /app
+
+# Fix the bug by editing the file
+sed -i 's/def process(data):/def process(data):\n    if not data:\n        return []/' main.py
+
+# Verify the fix
+python -c "from main import process; assert process('') == []"
+Key principles:
+
+Demonstrates the command sequence, not just the answer
+Must be deterministic — same result every run
+No hardcoded outputs (don't just echo the answer)
+Can include dependencies (other files in solution/ folder)
+If no solution provided, Oracle agent cannot be used to sanity check
+5. Tests (tests/test.sh)
+The test script must be named tests/test.sh (renamed from run-tests.sh). This script installs test dependencies and verifies the agent completed the instruction.
+
+Critical: The test script must produce a reward file in /logs/verifier/:
+
+bash
+
+Copy
+#!/bin/bash
+
+# Install test dependencies
+cd /tests
+uv venv
+source .venv/bin/activate
+uv pip install pytest
+
+# Run tests
+uvx \
+  -p 3.13 \
+  -w pytest==8.4.1 \
+  -w pytest-json-ctrf==0.3.5 \
+  pytest --ctrf /logs/verifier/ctrf.json /tests/test_outputs.py -rA
+
+# Produce reward file (REQUIRED)
+if [ $? -eq 0 ]; then
+  echo 1 > /logs/verifier/reward.txt
+else
+  echo 0 > /logs/verifier/reward.txt
+fi
+Reward file formats:
+
+/logs/verifier/reward.txt - Plain text (e.g., 1 for success, 0 for failure)
+/logs/verifier/reward.json - JSON with multiple metrics: { "runtime_sec": 1.23, "accuracy": 0.95 }
+Harbor reads reward.txt by default and falls back to reward.json.
+
+Key principles:
+
+Must produce reward file - This is how Harbor determines success/failure
+Use absolute paths - Recommended to avoid relative path issues
+Can include dependencies - Other files in tests/ folder are allowed
+Informative - Tests should clearly verify requirements
+Behavioral testing - Run code, don't parse it statically
+Example test file (tests/test_outputs.py):
+
+python
+
+Copy
+"""Tests for the bug fix task."""
+import pytest
+from app.main import process
+
+def test_empty_input_returns_empty_list():
+    """Verify empty input is handled gracefully."""
+    result = process("")
+    assert result == []
+
+def test_normal_input_unchanged():
+    """Verify normal behavior is preserved."""
+    result = process("hello")
+    assert result == ["h", "e", "l", "l", "o"]
+    Task Requirements
+This page lists all requirements your task must meet to pass review. Use this as a reference during development.
+
+Structural Requirements
+Every task submission must include:
+
+instruction.md	✅	Task instructions (markdown)
+task.toml	✅	Task configuration and metadata
+environment/Dockerfile	✅	Environment setup (or environment/docker-compose.yaml)
+solution/solve.sh	✅	Oracle solution script
+tests/test.sh	✅	Test runner script (must produce reward file)
+tests/test_outputs.py	✅	Pytest validation tests
+📦
+Download Task Skeleton Template
+ZIP Archive
+Download
+
+instruction.md Requirements
+Your instruction.md must include clear, unambiguous instructions:
+
+markdown
+
+Copy
+# Task Title
+
+Clear, unambiguous instructions for the agent.
+
+## Requirements
+- All requirements explicitly listed
+- Use absolute paths (/app/file.txt)
+- Specify output file names
+- Define data schemas completely
+Writing Quality Standards
+Human-written — No LLM-generated task descriptions
+Clear and unambiguous — A first-time reader should understand completely
+Explicit requirements — Don't assume anything; state everything
+Absolute paths — Always use /app/file.txt, never relative paths
+Named outputs — Tell the agent exactly what files to create and where
+Markdown formatting — Use proper markdown for readability
+task.toml Requirements
+Your task.toml must include required metadata:
+
+toml
+
+Copy
+version = "1.0"
+
+[metadata]
+difficulty = "medium"
+category = "debugging"
+tags = ["category", "type", "difficulty"]
+author_name = "anonymous"
+author_email = "anonymous"
+
+[verifier]
+timeout_sec = 120.0
+
+[agent]
+timeout_sec = 600.
+
+[environment]
+build_timeout_sec = 600.0
+cpus = 1
+memory_mb = 2048
+storage_mb = 10240
+Solution Requirements
+solve.sh Standards
+bash
+
+Copy
+#!/bin/bash
+set -euo pipefail
+
+# Your solution commands here
+Human-written — No LLM-generated solutions
+Deterministic — Same output every run (use seeds for randomness)
+Self-contained — All logic in the script, no external dependencies
+Idempotent — Can run multiple times safely
+What Makes a Good Solution
+✅ Good:
+
+bash
+
+Copy
+# Clear, step-by-step commands
+cd /app
+python process_data.py --seed 42 > output.txt
+❌ Bad:
+
+bash
+
+Copy
+# Relies on random behavior
+python script.py  # Non-deterministic output
+Test Requirements
+test_outputs.py Standards
+python
+
+Copy
+"""Test docstring explaining what this test file validates."""
+
+def test_output_file_exists():
+    """Verify that the required output file was created."""
+    assert Path("/app/output.txt").exists()
+
+def test_output_format():
+    """Verify output follows the specified JSON schema."""
+    # Test implementation
+Test Quality Checklist
+ Docstrings on every test — Explain what behavior is being tested
+ Test behavior, not implementation — Verify outcomes, not methods
+ One test per requirement — Each requirement has a corresponding test
+ No leaked answers — Tests shouldn't reveal the solution
+ Anti-cheating measures — Include canary strings, avoid predictable patterns
+Canary Strings
+Include unique canary strings to detect cheating:
+
+python
+
+Copy
+CANARY_STRING = "TERMINUS_TASK_abc123xyz"
+
+def test_canary_present():
+    """Verify canary string is in output (anti-cheating measure)."""
+    output = Path("/app/output.txt").read_text()
+    assert CANARY_STRING in output
+Environment Requirements
+The environment definition must be in the environment/ folder.
+
+Dockerfile Location
+Your Dockerfile must be in environment/Dockerfile:
+
+dockerfile
+
+Copy
+FROM python:3.11-slim
+# or
+FROM node:20-slim
+# or
+FROM ubuntu:22.04
+Dependency Pinning
+All dependencies must have pinned versions:
+
+dockerfile
+
+Copy
+# ✅ Good
+RUN pip install pandas==2.0.0 numpy==1.24.0
+
+# ❌ Bad
+RUN pip install pandas numpy
+Security Requirements
+ No privileged containers
+ Solution files not baked into image
+ Test dependencies not pre-installed
+ Minimal attack surface
+ Environment folder structure prevents accidental file copying
+Difficulty Requirements
+Your task must have a pass rate below 80% against SOTA agents.
+
+< 40%	Hard	✅ Accepted
+40-60%	Medium	✅ Accepted
+60-80%	Easy	✅ Accepted
+> 80%	Too Easy	❌ Rejected
+How to Verify
+Run your task against real agents (minimum 2-3 times each):
+
+bash
+
+Copy
+# GPT-5
+harbor run -a terminus-2 -m openai/@openai-tbench/gpt-5 -p <task-folder>
+
+# Claude Sonnet 4.5
+harbor run -a terminus-2 -m openai/@anthropic-tbench/claude-sonnet-4-5-20250929 -p <task-folder>
+Anti-Cheating Requirements
+Tasks must be resistant to shortcut solutions:
+
+Required Measures
+Canary strings — Unique identifiers that must appear in output
+Dynamic elements — Use computed values, not hardcoded answers
+Validation depth — Test multiple aspects of the solution
+Non-trivial verification — Answers shouldn't be derivable from tests
+Red Flags
+Your task will be rejected if:
+
+Solution can be copied from test assertions
+Output format reveals the answer structure
+Hardcoded values can pass tests
+Agent can "guess" the correct answer
+Automated Check Requirements
+Your task must pass all CI and LLMaJ checks:
+
+CI Checks (Must Pass)
+pinned_dependencies	All packages have version pins
+typos	No spelling errors in code
+tests_or_solution_in_image	Solution not in Docker image
+check_canary	Canary strings present
+check_dockerfile_references	All referenced files exist
+check_test_sh	Test runner uses uv and produces reward file
+check_task_absolute_path	Uses absolute paths
+ruff	Python code passes linting
+validate_task_fields	task.toml is complete
+LLMaJ Checks (Must Pass)
+behavior_in_task_description	Requirements clearly stated
+behavior_in_tests	Tests verify behavior
+informative_test_docstrings	Tests have good docstrings
+anti_cheating_measures	Task can't be gamed
+hardcoded_solution	Solution isn't trivially derivable
+file_reference_mentioned	Output files specified
+structured_data_schema	Data formats defined
+Summary Checklist
+Before submitting, verify:
+
+ All required files present (instruction.md, task.toml, environment/Dockerfile, solution/solve.sh, tests/test.sh)
+ instruction.md is human-written and clear
+ task.toml has all required fields
+ tests/test.sh produces /logs/verifier/reward.txt
+ solution/solve.sh is deterministic
+ All tests have docstrings
+ Dependencies are pinned
+ Canary strings included
+ Pass rate < 80%
+ CI checks pass locally
+ LLMaJ checks pass locally
+
+ Task Type Taxonomy
+Each task must be labeled with a category from this taxonomy. The category describes the primary theme, topic, or activity in the task.
+
+Categories
+system-administration
+Tasks involving OS-level configuration, user management, package management, processes, or installing, configuring, and bringing up services, networks, and environments.
+
+Examples:
+
+Configure a systemd service
+Set up user permissions
+Install and configure Nginx
+build-and-dependency-management
+Compile code, manage dependencies, build components.
+
+Examples:
+
+Fix a broken build configuration
+Resolve dependency conflicts
+Set up a multi-stage Docker build
+data-processing
+Tasks that transform, parse, filter, aggregate datasets or files and directories and generate derived output.
+
+Examples:
+
+Parse and transform CSV data
+Aggregate log files
+Filter and sort JSON datasets
+games
+Tasks centered on game-like or simulated environments, interactive puzzles, or simulation games that run in the terminal.
+
+Examples:
+
+Complete a VimGolf challenge
+Solve a terminal-based puzzle
+Navigate a text adventure
+software-engineering
+Tasks focused on developing or testing features and algorithms, fixing bugs and improving/optimizing an existing feature, implementing tests, or maintaining software projects.
+
+Examples:
+
+Implement a caching algorithm
+Fix a race condition
+Optimize database queries
+machine-learning
+Tasks requiring training, fine-tuning, running inference, or evaluating machine learning models, including dependency setup, running training loops, and managing data pipelines for ML tasks.
+
+Examples:
+
+Fine-tune a model on custom data
+Debug a training pipeline
+Optimize inference performance
+debugging
+Tasks that require identifying, diagnosing, and fixing errors in scripts, codebases, or system configurations.
+
+Examples:
+
+Find and fix a memory leak
+Debug a failing test suite
+Diagnose a production crash
+Security
+Tasks related to cryptography, authentication, permissions, penetration-style tests, exploit, validate vulnerabilities, reverse engineering or security configuration.
+
+Examples:
+
+Find a SQL injection vulnerability
+Configure secure TLS settings
+Reverse engineer a binary
+scientific-computing
+Tasks using scientific libraries or workflows, such as numerical computation, simulations, or domain-specific research code.
+
+Examples:
+
+Implement a numerical solver
+Debug a simulation
+Optimize a scientific computation
+Distribution Guidelines
+To ensure benchmark diversity:
+
+No single type should exceed ~30% of total tasks
+At least four types should each represent ≥10%
+Choosing a Category
+Pick the category that best describes the primary activity:
+
+OS/server configuration	system-administration
+Build systems, packages	build-and-dependency-management
+ETL, file processing	data-processing
+Interactive challenges	games
+Code development, testing	software-engineering
+ML model work	machine-learning
+Finding/fixing bugs	debugging
+Security issues	security
+Scientific code	scientific-computing
+Domain-Specific Tasks
+If your tasks are designed for a particular domain (e.g., financial services), an additional taxonomy specific to that domain can be developed. Discuss with the team on Slack.
+Example Tasks
+Learn from these example tasks that demonstrate quality standards and various task types.
+
+Example 1: VimGolf Challenge
+Category	games
+Difficulty	Medium
+Tags	games, vim, text-editing
+Task Instruction
+yaml
+
+Copy
+instruction: |
+  You are given a fresh install with python installed.
+  First, use pip to install vimgolf.
+  Then, read the file "/challenge.txt" to get the challenge id.
+  Then, use vimgolf show <CHALLENGE_ID> to get the best scores,
+  as well as the start file and end file.
+  Then, write the Start File to /start.txt and End File to /end.txt
+  Attempt the vimgolf challenge using vimgolf local /start.txt /end.txt,
+  and output the string of vim inputs in "/score.txt".
+  
+  Your primary objective is to solve the problem within the
+  minimum score * 1.5 in the leaderboard.
+Why It's Good
+✅ Multi-step: install → read → query → write → solve
+✅ Clear success criteria (score threshold)
+✅ Requires reasoning about vim commands
+✅ Verifiable output
+Example 2: OpenCV Debugging
+Category	debugging
+Difficulty	Medium
+Tags	computer-vision, jupyter-notebooks, bugfix
+Task Instruction
+yaml
+
+Copy
+instruction: |
+  A Jupyter notebook at /app/opencv_analysis.ipynb contains
+  several OpenCV image processing operations, but it has multiple
+  errors preventing it from running successfully.
+  Fix all errors in the notebook so that it executes completely
+  without errors and produces the expected output image.
+Why It's Good
+✅ Requires understanding computer vision code
+✅ Multiple bugs to find and fix
+✅ Clear success criteria (notebook runs completely)
+✅ Output is verifiable
+Example 3: Python Bytecode Decompilation
+Category	software-engineering
+Difficulty	Hard
+Tags	python, bytecode, serialization
+Task Instruction
+yaml
+
+Copy
+instruction: |
+  Your task is to decompile a Python function in bytecode format,
+  compiled in CPython 3.8, and save the function in decompiled.py
+  in the same folder as instruction.md.
+  The function name should be "func".
+  Note that the function is pickled using dill and serialized
+  using base64 in the file called func.serialized.
+Why It's Good
+✅ Requires niche knowledge (bytecode, dill, base64)
+✅ Multi-step process
+✅ Hard for LLMs without domain expertise
+✅ Deterministic verification
+Example 4: Python Environment Setup
+Category	system-administration
+Difficulty	Medium
+Tags	environment-setup, python, virtualenv
+Task Instruction
+yaml
+
+Copy
+instruction: |
+  Install Python using pyenv, create a virtual environment using
+  pyenv/virtualenv called "venv", activate it and install
+  numpy 1.26.4 in it.
+  You shouldn't get any warning during Python installation.
+  Make sure that tkinter is also available in the virtual environment.
+Why It's Good
+✅ Real-world setup task
+✅ Multiple requirements (pyenv, virtualenv, specific package)
+✅ Hidden complexity (tkinter requires system deps)
+✅ Verifiable final state
+Anti-Examples: Tasks to Avoid
+❌ Too Easy
+yaml
+
+Copy
+instruction: "Write a function that reverses a string"
+Problem: One-liner in most languages, GPT-4 solves instantly.
+
+❌ Too Vague
+yaml
+
+Copy
+instruction: "Build a web scraper"
+Problem: No specific requirements, impossible to verify.
+
+❌ Requires External Resources
+yaml
+
+Copy
+instruction: "Query the Twitter API to get trending topics"
+Problem: Requires API credentials, network access.
+
+❌ Ambiguous Success Criteria
+yaml
+
+Copy
+instruction: "Make this code better"
+Problem: "Better" is subjective without specific metrics.
+
+Difficulty Guidelines
+Task difficulty is determined by accuracy when run against frontier AI models. This guide helps you design tasks at the right difficulty level.
+
+Difficulty Levels
+Hard	< 40%
+Medium	< 60%
+Easy	< 80%
+Important: Tasks with > 80% pass rate will NOT be accepted.
+
+Evaluation Process
+Each task is evaluated against:
+
+GPT-5 with Codex agent
+Claude Sonnet 4.5 with Claude Code agent
+5 runs each to determine average accuracy
+The difficulty is based on whichever model performs better.
+
+Designing for Difficulty
+For Hard Tasks (< 40%)
+Hard tasks require one or more of:
+
+Deep domain expertise — Knowledge LLMs haven't seen much
+Complex multi-step reasoning — 10+ sequential steps
+Subtle debugging — Root cause analysis required
+Niche tools/languages — Less common technologies
+Techniques:
+
+Use bespoke rules buried in common patterns
+Require understanding of obscure documentation
+Create debugging tasks where the root cause isn't obvious
+Use domain-specific knowledge (blockchains, scientific computing)
+For Medium Tasks (< 60%)
+Medium tasks typically involve:
+
+Moderate complexity — 5-10 steps
+Some domain knowledge — Common but not trivial
+Clear requirements — But non-obvious solution
+Techniques:
+
+Combine multiple familiar concepts
+Add edge cases that require careful handling
+Include configuration that's easy to miss
+For Easy Tasks (< 80%)
+Easy tasks should still be:
+
+Non-trivial — Not one-liners
+Multi-step — At least 3-5 steps
+Testable — Clear success criteria
+Techniques:
+
+Standard tasks with one or two tricky aspects
+Well-known problems with specific constraints
+Setup tasks with multiple requirements
+Common Mistakes
+Making Tasks Too Easy
+Single-step solutions	Agents solve immediately
+Obvious debugging	Pattern matching succeeds
+Common tutorials	In training data
+Simple API usage	Well-documented
+Making Tasks Unfair
+Impossible requirements	No one can solve
+Ambiguous instructions	Luck determines success
+Time-dependent	Results vary randomly
+External dependencies	Environment issues
+Testing Your Difficulty
+Before submitting, verify difficulty by:
+
+1. Run Against Oracle Agent
+bash
+
+Copy
+harbor run --agent oracle --path <task-folder>
+This should PASS. If it doesn't, your task may have issues.
+
+2. Run Against Real Agents
+bash
+
+Copy
+# GPT-5
+harbor run -a terminus-2 -m openai/@openai-tbench/gpt-5 -p <task-folder>
+
+# Claude Sonnet 4.5
+harbor run -a terminus-2 -m openai/@anthropic-tbench/claude-sonnet-4-5-20250929 -p <task-folder>
+Run at least 2-3 times to gauge pass rate.
+
+3. Analyze Failures
+When agents fail:
+
+Is it for a good reason (task difficulty)?
+Or a bad reason (unclear instructions)?
+Good failures: Agent misunderstood complexity, missed edge case Bad failures: Ambiguous requirements, environment issues
+
+Adjusting Difficulty
+To Make Harder:
+Add more steps
+Include hidden requirements
+Use niche knowledge
+Create debugging scenarios
+Add edge cases
+To Make Easier:
+Reduce step count
+Make requirements more explicit
+Use common technologies
+Provide more hints in instructions
+Simplify the environment
+
+Creating a Task
+Learn how to create a new task from scratch using the task skeleton template.
+
+Getting Started
+To create a new task, you'll start with the task skeleton template and customize it for your specific task.
+
+Step 1: Download the Task Skeleton
+Download the task skeleton ZIP file from the training site:
+
+📦
+Download Task Skeleton Template
+ZIP Archive
+Download
+
+Step 2: Extract and Rename
+Extract the ZIP file to your desired location
+Rename the unzipped folder to match your task name
+Naming conventions:
+
+Use kebab-case (lowercase, hyphens)
+Be descriptive but concise
+Examples: parse-json-logs, debug-python-import, configure-nginx-ssl
+Good task names:
+
+✅ parse-json-logs
+✅ debug-python-import
+✅ configure-nginx-ssl
+Bad task names:
+
+❌ task1
+❌ my-task
+❌ test
+Task Structure
+After extracting and renaming, you'll have a folder structure like this:
+
+
+Copy
+your-task-name/
+├── instruction.md      # Task instructions (markdown)
+├── task.toml           # Task configuration and metadata
+├── environment/        # Environment definition folder
+│   ├── Dockerfile      # OR docker-compose.yaml
+│   └── [build files]   # Additional environment files
+├── solution/           # Oracle solution (optional)
+│   └── solve.sh        # Solution script + dependencies
+└── tests/              # Test verification
+    ├── test.sh         # Test execution script
+    └── [test files]    # Test dependencies
+Note: This structure follows the Harbor 2.0 task format. See Task Components for details on each file.
+
+Next Steps
+After downloading and renaming your task skeleton:
+
+Edit instruction.md — Write clear, unambiguous task instructions
+
+Guide: Writing task instructions
+Configure task.toml — Set up metadata and configuration
+
+Guide: Task Components
+Set up environment — Configure Docker in the environment/ folder
+
+Guide: Creating Docker environment
+Write the solution — Create solution/solve.sh
+
+Guide: Writing oracle solution
+Create tests — Write tests/test.sh and test files
+
+Guide: Writing tests
+Test locally — Run the oracle agent to verify your task works
+
+Guide: Oracle agent
+Key Commands
+Start Interactive Mode
+bash
+
+Copy
+harbor tasks start-env --path <task-folder> --interactive
+Inside the Container
+Once inside, you can:
+
+Navigate the filesystem
+Run your solution commands
+Test that everything works as expected
+Debug any issues
+Exit the Container
+bash
+
+Copy
+exit
+Tips
+Test everything manually first — Run each command of your solution inside the container before writing solve.sh
+
+Check file paths — Verify that all paths in instruction.md exist
+
+Verify dependencies — Make sure all required packages are installed
+
+Note exact commands — Copy the working commands for your solution file
+
+Common Issues
+Container won't start	Check Docker is running
+Permission denied	Run Docker Desktop with admin rights
+Missing packages	Add to environment/Dockerfile and rebuild
+Wrong working directory	Check WORKDIR in environment/Dockerfile
+Writing Task Instructions and Configuration
+In Harbor 2.0, task instructions and configuration are separated into two files:
+
+instruction.md — Task instructions shown to the agent (markdown format)
+task.toml — Task configuration and metadata (TOML format)
+Writing clear, unambiguous instructions is critical to task quality.
+
+instruction.md Structure
+The instruction.md file contains the task instructions in markdown format:
+
+markdown
+
+Copy
+# Fix Empty Input Bug
+
+Your task is to fix the bug in /app/main.py that causes
+the application to crash when processing empty input.
+
+## Requirements
+
+The fix should:
+1. Handle empty string input gracefully
+2. Return an empty list instead of crashing
+3. Not modify any other behavior
+
+## Files
+
+- Input: `/app/main.py`
+- Output: Modified `/app/main.py`
+task.toml Structure
+The task.toml file contains configuration and metadata:
+
+toml
+
+Copy
+version = "1.0"
+
+[metadata]
+author_name = "anonymous"
+author_email = "anonymous"
+difficulty = "medium"
+category = "debugging"
+tags = ["python", "memory-leak", "debugging"]
+
+[verifier]
+timeout_sec = 120.0
+
+[agent]
+timeout_sec = 600.0
+
+[environment]
+build_timeout_sec = 600.0
+docker_image = "some-org/some-name:some-tag"
+cpus = 1
+memory_mb = 2048
+storage_mb = 10240
+Writing Good Instructions (instruction.md)
+Be Explicit
+State every requirement clearly. Don't assume the agent knows anything.
+
+Good:
+
+markdown
+
+Copy
+# Fix Server Error Handling
+
+Fix the bug in /app/server.py that causes a 500 error
+when the request body is empty.
+
+## Requirements
+
+1. Return HTTP 400 with message "Request body required"
+2. Do not modify the response format for valid requests
+3. Add a test case in /app/tests/test_server.py
+Bad:
+
+markdown
+
+Copy
+# Fix Server Bug
+
+Fix the server bug.
+Use Absolute Paths
+Always use full paths starting with /.
+
+Good: /app/config/settings.json Bad: config/settings.json or ./settings.json
+
+Specify Output Files
+If tests check for specific files, mention them explicitly.
+
+markdown
+
+Copy
+# Process Data and Output Results
+
+Write your solution to /output/result.json
+
+## Output Format
+
+The JSON should have this structure:
+```json
+{
+  "status": "success",
+  "count": <number>,
+  "items": [...]
+}
+
+Copy
+
+### Define Data Formats
+
+Be precise about expected formats:
+
+```markdown
+# Parse CSV to JSON
+
+Parse the CSV at /data/input.csv and output to /data/output.json
+
+## CSV Format
+
+- First row is headers
+- Columns: id, name, value
+- Values may contain commas (enclosed in quotes)
+
+## JSON Format
+
+- Array of objects
+- Each object has keys: id (int), name (string), value (float)
+List All Constraints
+Make implicit requirements explicit:
+
+markdown
+
+Copy
+# Optimize Database Query
+
+Optimize the query in /app/db/queries.py
+
+## Constraints
+
+- Must complete in under 100ms for 1M rows
+- Do not change the function signature
+- Do not use raw SQL (ORM only)
+- Result must maintain same ordering
+Common Mistakes
+Ambiguous Language
+"Make it better"	"Reduce runtime by 50%"
+"Fix the issues"	"Fix the 3 failing tests in test_api.py"
+"Handle errors properly"	"Return HTTP 400 for invalid input"
+Missing Edge Cases
+If tests check edge cases, mention them:
+
+markdown
+
+Copy
+# Implement Binary Search
+
+Implement binary search in /app/search.py
+
+## Requirements
+
+- Function: `binary_search(arr, target) -> int`
+- Return index if found, -1 if not found
+- Handle empty arrays (return -1)
+- Handle arrays with duplicate values (return any matching index)
+Tool Specification Without Verification
+Don't require specific tools unless you can verify they were used:
+
+Bad:
+
+markdown
+
+Copy
+# Edit Configuration
+
+Use vim to edit the file
+Good:
+
+markdown
+
+Copy
+# Edit Configuration
+
+Edit /app/config.txt to change the port from 8080 to 3000
+task.toml Configuration Fields
+Metadata Section
+metadata.difficulty	Yes	easy, medium, or hard
+metadata.category	Yes	From task taxonomy
+metadata.tags	Yes	3-6 descriptive tags (array)
+metadata.author_name	No	Your name
+metadata.author_email	No	Your email
+Verifier Section
+verifier.timeout_sec	No	Max seconds for verification (default: 120)
+Agent Section
+agent.timeout_sec	No	Max seconds for agent execution (default: 120)
+Environment Section
+environment.build_timeout_sec	No	Max seconds for build (default: 600)
+environment.docker_image	No	Pre-built Docker image (optional)
+environment.cpus	No	CPU allocation
+environment.memory_mb	No	Memory allocation in MB
+environment.storage_mb	No	Storage allocation in MB
+Validation
+Your task files will be validated by CI checks:
+
+validate_task_fields — All required fields present in task.toml
+check_task_absolute_path — Uses absolute paths in instruction.md
+file_reference_mentioned — Output files mentioned in instruction.md
+typos — No spelling errors
+Key Differences from Terminal-Bench
+In Harbor 2.0:
+
+✅ Instructions are in markdown (instruction.md) — better formatting and readability
+✅ Configuration is in TOML (task.toml) — cleaner nested structure
+✅ Separation of concerns — instructions vs. metadata
+✅ No more multiline YAML strings — markdown handles formatting naturally
+Creating Docker Environment
+The Dockerfile sets up the task environment. It must be placed in the environment/ folder and be reproducible, lightweight, and run without privileged mode.
+
+Basic Dockerfile
+Your Dockerfile should be located at environment/Dockerfile:
+
+dockerfile
+
+Copy
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies (PIN VERSIONS!)
+RUN pip install --no-cache-dir \
+    numpy==1.26.4 \
+    pandas==2.1.0 \
+    requests==2.31.0
+
+# Copy task files
+COPY app/ /app/
+
+# Set up environment
+ENV PYTHONPATH=/app
+Key Principles
+1. Pin All Dependencies
+Every pip dependency must have an exact version:
+
+dockerfile
+
+Copy
+# Good
+RUN pip install numpy==1.26.4
+
+# Bad
+RUN pip install numpy
+RUN pip install numpy>=1.0
+Note: System packages (apt-get) don't need to be pinned.
+
+2. Never Copy Solution or Tests
+The harness automatically mounts these. Never include them in the image:
+
+dockerfile
+
+Copy
+# WRONG - Never do this!
+COPY solution/ /solution/
+COPY tests/ /tests/
+3. No Privileged Mode
+Don't require root or privileged Docker settings:
+
+yaml
+
+Copy
+# WRONG - Never use this!
+services:
+  task:
+    privileged: true
+4. Keep Images Lightweight
+Use slim base images when possible
+Clean up apt cache after installs
+Don't install unnecessary packages
+docker-compose.yaml
+yaml
+
+Copy
+version: "3.8"
+services:
+  task:
+    build: .
+    working_dir: /app
+    volumes:
+      - ./workspace:/workspace
+    environment:
+      - PYTHONPATH=/app
+Multi-Container Setup
+For tasks requiring multiple services:
+
+yaml
+
+Copy
+version: "3.8"
+services:
+  app:
+    build: .
+    depends_on:
+      - db
+    environment:
+      - DATABASE_URL=postgresql://user:pass@db:5432/app
+  
+  db:
+    image: postgres:15
+    environment:
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=pass
+      - POSTGRES_DB=app
+Common Patterns
+Python Project
+dockerfile
+
+Copy
+FROM python:3.11-slim
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY src/ /app/src/
+ENV PYTHONPATH=/app
+Node.js Project
+dockerfile
+
+Copy
+FROM node:20-slim
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci
+
+COPY src/ /app/src/
+System Administration Task
+dockerfile
+
+Copy
+FROM ubuntu:22.04
+RUN apt-get update && apt-get install -y \
+    nginx \
+    curl \
+    vim \
+    && rm -rf /var/lib/apt/lists/*
+Git Repository Task
+dockerfile
+
+Copy
+FROM python:3.11-slim
+RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
+
+# Clone at specific commit to prevent cheating
+RUN git clone https://github.com/example/repo.git /app \
+    && cd /app && git checkout abc123def
+Important: When cloning repos, pin to a specific commit so agents can't see newer commits with solutions.
+
+Troubleshooting
+Build Fails
+bash
+
+Copy
+# Test your Dockerfile locally
+cd environment
+docker build -t my-task .
+docker run -it my-task bash
+Container Won't Start
+Check docker-compose logs:
+
+bash
+
+Copy
+docker-compose logs
+Permission Issues
+On macOS, ensure Docker Desktop settings allow socket access:
+
+Settings → Advanced
+Enable "Allow the default Docker socket to be used"
+CI Checks
+Your Dockerfile will be validated:
+Writing Oracle Solution
+The oracle solution (solution/solve.sh) is an expert-authored script that reliably completes the task. It's used to verify that the task is solvable.
+
+Getting Started
+Video Tutorial
+Creating a solution/solve.sh
+
+
+What You'll Learn
+Structure of a good solution/solve.sh file
+How to transfer commands from interactive testing
+Best practices for deterministic solutions
+Common pitfalls to avoid
+Basic Structure
+bash
+
+Copy
+#!/bin/bash
+set -e  # Exit on error
+
+# Step 1: Navigate to working directory
+cd /app
+
+# Step 2: Perform the task
+sed -i 's/bug/fix/' main.py
+
+# Step 3: Verify the fix
+python -c "from main import process; assert process('test') == expected"
+
+# Step 4: Any cleanup or final steps
+echo "Task completed successfully"
+Key Principles
+1. Demonstrate Command Sequence
+The solution should show the steps to derive the answer, not just the answer itself.
+
+Good:
+
+bash
+
+Copy
+#!/bin/bash
+# Find and fix the bug
+grep -r "TypeError" /app/logs/ | head -1
+# Found: main.py:42: TypeError: 'NoneType' object
+
+# Fix the bug
+sed -i '42s/data.process()/data.process() if data else None/' /app/main.py
+
+# Verify
+python -m pytest /app/tests/ -v
+Bad:
+
+bash
+
+Copy
+#!/bin/bash
+# Don't just echo the answer!
+echo "42" > /output/answer.txt
+2. Must Be Deterministic
+Running the solution multiple times should produce the same result.
+
+Avoid:
+
+Random values without seeds
+Time-dependent operations
+Network calls to external services
+3. Written By Human
+The solution should be written by you, not generated by an LLM. Minimal LLM assistance for syntax is acceptable.
+
+Advanced Patterns
+Multi-Step Solutions
+bash
+
+Copy
+#!/bin/bash
+set -e
+
+# Step 1: Set up environment
+cd /app
+source venv/bin/activate
+
+# Step 2: Fix first issue
+python -c "
+import json
+config = json.load(open('config.json'))
+config['debug'] = False
+json.dump(config, open('config.json', 'w'))
+"
+
+# Step 3: Fix second issue
+sed -i 's/localhost/0.0.0.0/' server.py
+
+# Step 4: Restart service
+pkill -f server.py || true
+python server.py &
+sleep 2
+
+# Step 5: Verify
+curl -s http://localhost:8080/health | grep -q "ok"
+Using Python in Solution
+bash
+
+Copy
+#!/bin/bash
+cd /app
+
+python << 'EOF'
+import pandas as pd
+
+df = pd.read_csv('/data/input.csv')
+df['total'] = df['price'] * df['quantity']
+df.to_csv('/data/output.csv', index=False)
+EOF
+Interactive Commands (solution.yaml)
+For tasks requiring interactive tools like vim:
+
+yaml
+
+Copy
+# solution/solution.yaml
+commands:
+  - type: interactive
+    command: vim /app/file.txt
+    inputs:
+      - "dd"      # Delete line
+      - "i"       # Insert mode
+      - "hello"   # Type text
+      - "<Esc>"   # Exit insert
+      - ":wq"     # Save and quit
+Common Mistakes
+Hardcoding Answers
+bash
+
+Copy
+# WRONG: This just outputs the answer
+echo "The answer is 42" > /output/result.txt
+
+# RIGHT: This derives the answer
+cd /app
+python calculate.py > /output/result.txt
+Non-Deterministic Solutions
+bash
+
+Copy
+# WRONG: Random without seed
+python -c "import random; print(random.choice([1,2,3]))"
+
+# RIGHT: Deterministic
+python -c "import random; random.seed(42); print(random.choice([1,2,3]))"
+Missing Error Handling
+bash
+
+Copy
+# WRONG: Silent failures
+cd /nonexistent || true
+do_something
+
+# RIGHT: Fail fast
+set -e
+cd /app
+do_something
+Testing Your Solution
+Run Locally
+bash
+
+Copy
+# Enter the container
+harbor tasks start-env --path <task-folder> --interactive
+
+# Inside container, run your solution steps manually
+# Verify each step works as expected
+Run Oracle Agent
+bash
+
+Copy
+harbor run --agent oracle --path <task-folder>
+The oracle agent should PASS. If it fails, either:
+
+Your solution has bugs
+Your tests are too strict
+The task has issues
+Canary String
+Your solution must include the canary string at the top:
+
+bash
+
+Copy
+#!/bin/bash
+# CANARY_STRING_PLACEHOLDER
+
+set -e
+# ... rest of solutionWriting Tests
+The tests/test_outputs.py file contains pytest tests that verify task completion. Good tests are the foundation of a quality task.
+
+Getting Started
+Video Tutorial
+Creating Tests for Your Task
+
+
+What You'll Learn
+Structure of test_outputs.py
+Writing effective test cases
+Matching tests to task requirements
+Common testing patterns
+Basic Structure
+python
+
+Copy
+"""Tests for the data processing task."""
+import pytest
+import json
+from pathlib import Path
+
+
+def test_output_file_exists():
+    """Verify the output file was created."""
+    assert Path("/output/result.json").exists()
+
+
+def test_output_format():
+    """Verify the output has correct JSON structure."""
+    with open("/output/result.json") as f:
+        data = json.load(f)
+    
+    assert "status" in data
+    assert "items" in data
+    assert isinstance(data["items"], list)
+
+
+def test_correct_count():
+    """Verify the item count is correct."""
+    with open("/output/result.json") as f:
+        data = json.load(f)
+    
+    assert len(data["items"]) == 42
+Key Principles
+1. Test Behavior, Not Implementation
+Run the code and check results. Don't parse source code looking for patterns.
+
+Good:
+
+python
+
+Copy
+def test_function_handles_empty_input():
+    """Empty input should return empty list."""
+    from app.main import process
+    result = process("")
+    assert result == []
+Bad:
+
+python
+
+Copy
+def test_has_empty_check():
+    """Check if code has empty input handling."""
+    source = open("/app/main.py").read()
+    assert "if not" in source  # Brittle!
+2. Informative Docstrings
+Every test must have a docstring explaining what behavior it checks. This is validated by CI.
+
+python
+
+Copy
+def test_api_returns_json():
+    """API endpoint should return valid JSON with Content-Type header."""
+    response = requests.get("http://localhost:8080/api/data")
+    assert response.headers["Content-Type"] == "application/json"
+    assert response.json()  # Parseable JSON
+3. Match Task Requirements
+Every requirement in instruction.md should have a corresponding test:
+
+"Return empty list for empty input"	test_empty_input_returns_empty_list
+"Output to /data/result.csv"	test_output_file_exists
+"Include header row"	test_csv_has_header
+4. Cover Edge Cases
+Test the boundaries, not just the happy path:
+
+python
+
+Copy
+def test_empty_input():
+    """Empty input is handled gracefully."""
+    assert process("") == []
+
+def test_single_item():
+    """Single item input works correctly."""
+    assert process("a") == ["a"]
+
+def test_large_input():
+    """Large input is handled efficiently."""
+    result = process("x" * 10000)
+    assert len(result) == 10000
+
+def test_special_characters():
+    """Special characters are preserved."""
+    assert process("héllo 世界") == ["héllo", "世界"]
+tests/test.sh
+The test runner script sets up the environment, runs pytest, and produces a reward file:
+
+bash
+
+Copy
+#!/bin/bash
+cd /tests
+
+# Set up virtual environment
+uv venv
+source .venv/bin/activate
+
+# Install test dependencies
+uv pip install pytest requests
+
+# Run tests
+pytest test_outputs.py -v
+
+# Produce reward file (REQUIRED)
+if [ $? -eq 0 ]; then
+  echo 1 > /logs/verifier/reward.txt
+else
+  echo 0 > /logs/verifier/reward.txt
+fi
+Note: Test dependencies should be installed in tests/test.sh, NOT in the Dockerfile. The script must produce /logs/verifier/reward.txt or /logs/verifier/reward.json.
+
+Common Patterns
+Testing File Output
+python
+
+Copy
+def test_csv_output():
+    """Verify CSV output format and content."""
+    import csv
+    
+    with open("/output/data.csv") as f:
+        reader = csv.DictReader(f)
+        rows = list(reader)
+    
+    assert len(rows) > 0
+    assert "id" in rows[0]
+    assert "name" in rows[0]
+Testing API Endpoints
+python
+
+Copy
+import requests
+
+def test_health_endpoint():
+    """Health check endpoint returns 200."""
+    response = requests.get("http://localhost:8080/health")
+    assert response.status_code == 200
+
+def test_api_error_handling():
+    """Invalid requests return 400."""
+    response = requests.post(
+        "http://localhost:8080/api/data",
+        json={"invalid": "data"}
+    )
+    assert response.status_code == 400
+Testing Database State
+python
+
+Copy
+import sqlite3
+
+def test_database_populated():
+    """Database contains expected records."""
+    conn = sqlite3.connect("/app/data.db")
+    cursor = conn.execute("SELECT COUNT(*) FROM users")
+    count = cursor.fetchone()[0]
+    conn.close()
+    
+    assert count == 100
+Testing Command Output
+python
+
+Copy
+import subprocess
+
+def test_cli_help():
+    """CLI shows help message."""
+    result = subprocess.run(
+        ["python", "/app/cli.py", "--help"],
+        capture_output=True,
+        text=True
+    )
+    assert result.returncode == 0
+    assert "Usage:" in result.stdout
+Anti-Patterns to Avoid
+Brittle String Matching
+python
+
+Copy
+# BAD: Exact string match
+def test_output():
+    output = open("/output/log.txt").read()
+    assert output == "Processing complete\n"
+
+# GOOD: Check for key content
+def test_output():
+    output = open("/output/log.txt").read()
+    assert "complete" in output.lower()
+Hardcoded Random Values
+python
+
+Copy
+# BAD: Assumes specific random output
+def test_random():
+    result = generate_random()
+    assert result == 42
+
+# GOOD: Check properties
+def test_random():
+    result = generate_random()
+    assert 1 <= result <= 100
+Order-Dependent Tests
+python
+
+Copy
+# BAD: Tests depend on execution order
+def test_1_setup():
+    global data
+    data = load_data()
+
+def test_2_process():
+    process(data)  # Fails if test_1 didn't run first
+
+# GOOD: Each test is independent
+def test_process():
+    data = load_data()
+    result = process(data)
+    assert result is not None
+CI Validation
+Your tests will be validated by:
+
+behavior_in_tests	All task requirements have tests
+behavior_in_task_description	All tested behavior is in instruction.md
+informative_test_docstrings	Each test has a docstring
+ruff	Code passes linting
+Oracle Agent
+The Oracle Agent runs your solution/solve.sh in the task environment and verifies it passes all tests. It's the first line of validation for your task.
+
+Getting Started
+Video Tutorial
+Oracle Training Tutorial
+
+
+Practice Notebook
+Download the Jupyter notebook for hands-on practice:
+
+📓
+Download Oracle Training Notebook
+Jupyter Notebook
+Download
+
+What You'll Learn
+What the Oracle Agent is and how it works
+How to run the Oracle Agent on your task
+How to interpret Oracle output
+How to debug failing runs
+How to iterate and fix issues
+What is the Oracle Agent?
+The Oracle Agent is an automated agent that:
+
+Starts your Docker environment
+Executes your solution/solve.sh commands
+Runs your tests to verify completion
+Reports pass/fail results
+If the Oracle Agent can't complete your task, neither can AI agents.
+
+Key Concept: The Oracle Agent verifies that your task is solvable. If the Oracle can't solve your task, it's broken.
+
+Running the Oracle Agent
+bash
+
+Copy
+# Basic run
+harbor run --agent oracle --path <task-folder>
+
+# With verbose output
+harbor run --agent oracle --path <task-folder> -v
+Expected Output
+Successful Run
+
+Copy
+Starting task: my-task
+Building Docker environment...
+Running oracle solution...
+  ✓ Step 1 completed
+  ✓ Step 2 completed
+  ✓ Step 3 completed
+Running tests...
+  ✓ test_output_exists PASSED
+  ✓ test_format_correct PASSED
+  ✓ test_values_valid PASSED
+
+RESULT: PASS
+Failed Run
+
+Copy
+Starting task: my-task
+Building Docker environment...
+Running oracle solution...
+  ✓ Step 1 completed
+  ✗ Step 2 failed: command not found
+
+RESULT: FAIL
+Error: Solution did not complete successfully
+Debugging Failures
+Debugging Workflow
+When the Oracle Agent fails, follow this workflow:
+
+Step 1: Identify the Failure
+
+Read the error message carefully
+Which step failed?
+What was the error?
+What file/command was involved?
+Step 2: Reproduce Interactively
+
+bash
+
+Copy
+harbor tasks start-env --path <task-folder> --interactive
+Inside the container, run commands one by one to find the issue.
+
+Step 3: Fix and Re-test
+
+Update solution/solve.sh or environment/Dockerfile
+Run Oracle again
+Repeat until passing
+Solution Fails
+If your solution doesn't run:
+
+Enter interactive mode:
+
+bash
+
+Copy
+harbor tasks start-env --path <task-folder> --interactive
+Run commands manually to find the failing step
+
+Check for:
+
+Typos in commands
+Missing dependencies
+Wrong file paths
+Permission issues
+Tests Fail
+If the solution runs but tests fail:
+
+Check test output for specific failures
+
+Verify your solution actually produces expected output
+
+Check for:
+
+Incorrect output format
+Missing files
+Off-by-one errors
+Edge cases not handled
+Environment Issues
+If the container won't build:
+
+Check Dockerfile syntax in environment/Dockerfile
+
+Verify base image exists and is accessible
+
+Check dependency installation commands
+
+Try building manually:
+
+bash
+
+Copy
+cd <task-folder>/environment
+docker build -t test .
+Common Issues
+"command not found"	Missing dependency	Add to environment/Dockerfile
+"file not found"	Wrong path	Use absolute paths
+"permission denied"	File permissions	Check chmod in environment/Dockerfile
+Tests timeout	Solution too slow	Optimize or increase timeout
+Common Debugging Scenarios
+Missing File:
+
+
+Copy
+Error: No such file: /app/data/input.csv
+Fix: Check environment/Dockerfile COPY commands and file paths
+
+Command Not Found:
+
+
+Copy
+Error: grep: command not found
+Fix: Add package to environment/Dockerfile apt-get install
+
+Test Assertion Failed:
+
+
+Copy
+AssertionError: Expected 42, got 41
+Fix: Debug your solution logic
+
+Timeout:
+
+
+Copy
+Error: Task exceeded timeout (1800s)
+Fix: Optimize solution or increase timeout in task.toml ([agent].timeout_sec)
+
+Oracle vs Real Agents
+Runs your solution/solve.sh	Generate their own solution
+Always deterministic	May vary between runs
+Tests task validity	Tests task difficulty
+Must always pass	May fail (that's the goal!)
+Testing Agent Performance
+Test your task against real AI agents to validate difficulty and ensure your task challenges frontier models appropriately.
+
+Prerequisites
+Get your API key from Snorkel via email. If you haven't received one, DM Puyun or Alejandro on Slack.
+
+Note: You'll need Harbor CLI installed to run agents locally. See Environment Setup for installation instructions.
+
+Environment Setup
+Set the following environment variables:
+
+bash
+
+Copy
+export OPENAI_API_KEY=<your-portkey-api-key>
+export OPENAI_BASE_URL=https://api.portkey.ai/v1
+Tip: Add these to your ~/.bashrc or ~/.zshrc for persistence.
+
+Available Models
+GPT-5	openai/@openai-tbench/gpt-5
+Claude Sonnet 4.5	openai/@anthropic-tbench/claude-sonnet-4-5-20250929
+Running Agents
+GPT-5
+bash
+
+Copy
+harbor run \
+  -a terminus-2 \
+  -m openai/@openai-tbench/gpt-5 \
+  -p <task-folder>
+Claude Sonnet 4.5
+bash
+
+Copy
+harbor run \
+  -a terminus-2 \
+  -m openai/@anthropic-tbench/claude-sonnet-4-5-20250929 \
+  -p <task-folder>
+Interpreting Results
+Pass
+The agent successfully completed the task. Run each agent 5 times to establish a reliable pass rate.
+
+Fail - Good
+The agent failed for a legitimate reason:
+
+Didn't understand the complexity
+Made reasoning errors
+Missed edge cases
+This is what we want! The task is challenging.
+
+Fail - Bad
+The agent failed due to task issues:
+
+Unclear instructions
+Ambiguous requirements
+Environment problems
+This means your task needs revision.
+
+Determining Difficulty
+Run each agent 5 times to get a reliable pass rate:
+
+0-40%	Hard
+40-60%	Medium
+60-80%	Easy
+> 80%	Too Easy - Rejected
+Example Testing
+
+Copy
+Run 1 (GPT-5): FAIL
+Run 2 (GPT-5): PASS
+Run 3 (GPT-5): FAIL
+Run 4 (GPT-5): FAIL
+Run 5 (GPT-5): PASS
+Run 1 (Claude): FAIL
+Run 2 (Claude): FAIL
+Run 3 (Claude): FAIL
+Run 4 (Claude): FAIL
+Run 5 (Claude): FAIL
+
+GPT-5: 2/5 = 40%
+Claude: 0/5 = 0%
+
+Best: 40% → Hard difficulty ✓
+Analyzing Failures
+When an agent fails:
+
+Watch the terminal recording — See what the agent tried
+Check the analysis — Review identified issues
+Read the debug pane — Understand why it failed
+Ask yourself:
+
+Did the agent fail for a good reason (task difficulty)?
+Or a bad reason (unclear instructions)?
+Good Failure Reasons
+Agent made reasoning errors
+Agent missed subtle requirements
+Agent didn't have domain knowledge
+Multi-step complexity confused agent
+Bad Failure Reasons
+Instructions were ambiguous
+Environment had issues
+Tests were too strict
+Required information was missing
+Adjusting Difficulty
+Task Too Easy?
+Add more steps
+Include hidden requirements
+Use niche knowledge
+Create debugging scenarios
+Task Too Hard?
+Simplify requirements
+Make instructions clearer
+Reduce step count
+Provide more hints
+
+CI Iteration Workflow
+
+Copy
+Run checks → Identify failures → Fix issues → Re-run → Repeat
+Step 1: Run All Checks
+bash
+
+Copy
+harbor tasks check <task-folder> --model openai/@openai-tbench/gpt-5
+Step 2: Review Output
+
+Copy
+CI Checks:
+  ✓ pinned_dependencies
+  ✗ check_task_absolute_path
+  ✓ validate_task_fields
+
+LLMaJ Checks:
+  ✓ behavior_in_tests
+  ✗ informative_test_docstrings
+  ✓ anti_cheating_measures
+
+2 checks failed
+Step 3: Fix One Issue at a Time
+Focus on one failure at a time. The error message will tell you exactly what's wrong:
+
+
+Copy
+✗ check_task_absolute_path
+  Line 3: "Edit config/settings.json"
+  Use absolute path: /app/config/settings.json
+For detailed fix instructions: See CI Checks Reference and LLMaJ Checks Reference
+
+Step 4: Re-run and Verify
+bash
+
+Copy
+harbor tasks check <task-folder> --model openai/@openai-tbench/gpt-5
+Step 5: Repeat
+Continue fixing issues one at a time until all checks pass.
+
+Understanding Error Messages
+Error messages are designed to be helpful. They typically include:
+
+Which check failed (e.g., check_task_absolute_path)
+Where the issue is (file and line number)
+What's wrong (specific problem description)
+How to fix it (suggestion or requirement)
+Read the error message carefully—it tells you exactly what needs to be fixed.
+
+Tips for Efficient Iteration
+Fix easy issues first — Start with CI checks (syntax/structure) before LLMaJ (quality)
+
+Run locally before submitting — Saves time and helps you catch issues early
+
+Read error messages carefully — They tell you exactly what's wrong and often how to fix it
+
+One fix at a time — Easier to track what worked and debug if something breaks
+
+Use the reference guides — CI Checks Reference and LLMaJ Checks Reference have detailed explanations for each check
+
+Checklist Before Final Submission
+ All CI checks pass
+ All LLMaJ checks pass
+ Oracle agent passes
+ Real agents tested (difficulty verified)
+ Code reviewed for quality
+ CI Checks
+All submissions must pass these automated Agent-checks. This reference explains each check and how to fix failures.
+
+Running Agents Locally
+bash
+
+Copy
+# Using GPT-5 (recommended - matches CI)
+harbor run -a terminus-2 -m openai/@openai-tbench/gpt-5 -p <task-folder>
+Static Checks
+pinned_dependencies
+What it checks: All pip dependencies have exact version numbers.
+
+How to fix:
+
+dockerfile
+
+Copy
+# Bad
+RUN pip install numpy pandas
+
+# Good
+RUN pip install numpy==1.26.4 pandas==2.1.0
+Note: apt-get packages don't need pinning.
+
+typos
+What it checks: Spelling errors in file and variable names.
+
+How to fix: Review flagged items and correct spelling.
+
+tests_or_solution_in_image
+What it checks: The tests/ folder or solution files are NOT copied into the Docker image.
+
+How to fix: Remove from environment/Dockerfile:
+
+dockerfile
+
+Copy
+# Remove these lines!
+COPY tests/ /tests/
+COPY solution/ /solution/
+test_deps_in_image
+What it checks: Test dependencies are installed in tests/test.sh, not Dockerfile.
+
+How to fix:
+
+bash
+
+Copy
+# In tests/test.sh (correct)
+uv pip install pytest requests
+
+# Not in environment/Dockerfile (wrong)
+RUN pip install pytest requests
+check_canary
+What it checks: Canary string is present at top of required files.
+
+How to fix: Add to instruction.md, solution/solve.sh, environment/Dockerfile, tests/test_outputs.py:
+
+
+Copy
+# CANARY_STRING_PLACEHOLDER
+check_dockerfile_references
+What it checks: Solution/test files not referenced in Dockerfile.
+
+How to fix: Remove references from environment/Dockerfile:
+
+solution/solve.sh
+tests/test.sh
+test_outputs.py
+check_test_sh
+What it checks: tests/test.sh uses uv init/venv and produces reward file.
+
+How to fix:
+
+bash
+
+Copy
+# In tests/test.sh
+uv venv
+source .venv/bin/activate
+uv pip install pytest
+
+# Run tests
+pytest test_outputs.py -v
+
+# Produce reward file (REQUIRED)
+if [ $? -eq 0 ]; then
+  echo 1 > /logs/verifier/reward.txt
+else
+  echo 0 > /logs/verifier/reward.txt
+fi
+check_task_absolute_path
+What it checks: Task instructions use absolute paths.
+
+How to fix:
+
+markdown
+
+Copy
+# Bad
+Edit config/settings.json
+
+# Good
+Edit /app/config/settings.json
+check_privileged_containers
+What it checks: No privileged containers in docker-compose.yaml.
+
+How to fix: Remove from environment/docker-compose.yaml:
+
+yaml
+
+Copy
+# Remove this!
+privileged: true
+ruff
+What it checks: Python code passes linting.
+
+How to fix:
+
+bash
+
+Copy
+# Check locally
+ruff check tests/test_outputs.py
+
+# Auto-fix
+ruff check --fix tests/test_outputs.py
+check_task_sizes
+What it checks: All files are under 1MB.
+
+How to fix: Remove or compress large files.
+
+validate_task_fields
+What it checks: All required fields present in task.toml.
+
+How to fix: Ensure task.toml has:
+
+[metadata].difficulty
+[metadata].category
+[metadata].tags
+[verifier].timeout_sec (optional)
+[agent].timeout_sec (optional)
+Quick Reference Table
+pinned_dependencies	Exact versions	Add ==x.y.z to pip installs
+typos	Spelling	Correct typos
+tests_or_solution_in_image	No test/solution in Docker	Remove COPY commands
+test_deps_in_image	Test deps in tests/test.sh	Move pip installs
+check_canary	Canary string present	Add comment to files
+check_dockerfile_references	No forbidden references	Remove solution/test refs
+check_test_sh	Uses uv + produces reward	Add uv venv and reward file
+check_task_absolute_path	Absolute paths	Use /full/path
+check_privileged_containers	No privileged mode	Remove privileged: true
+ruff	Linting passes	Run ruff --fix
+check_task_sizes	Files < 1MB	Compress/remove large files
+validate_task_fields	Required fields	Add missing fields
+LLMaJ Checks Reference
+LLM-as-Judge (LLMaJ) checks use GPT-5 to evaluate task quality and correctness. These go beyond syntax to assess whether your task is well-designed.
+
+Running LLMaJ Locally
+bash
+
+Copy
+# GPT-5 (matches CI)
+harbor tasks check -m openai/@openai-tbench/gpt-5 --output-path output.json harbor_tasks/<task_name>
+LLMaJ Checks
+behavior_in_task_description
+What it checks: Whether all behavior checked in tests is described in the instruction.md file.
+
+Why it matters: Agents can only do what they're told. If tests check for behavior not mentioned in instructions, the task is unfair.
+
+How to fix:
+
+Review each test case
+Ensure the corresponding behavior is explicitly stated in instruction.md
+Add any missing requirements to instructions
+Example:
+
+python
+
+Copy
+# Test checks for header row
+def test_csv_has_header():
+    with open("/output/data.csv") as f:
+        first_line = f.readline()
+    assert "id,name,value" in first_line
+markdown
+
+Copy
+# instruction.md must mention this!
+
+Output a CSV file with headers: id, name, value
+behavior_in_tests
+What it checks: Whether all behavior described in instruction.md is verified by unit tests.
+
+Why it matters: If instructions say to do something but no test checks it, the task has gaps.
+
+How to fix:
+
+Review each requirement in instruction.md
+Ensure there's a corresponding test
+Add tests for any uncovered requirements
+informative_test_docstrings
+What it checks: Whether test functions have docstrings explaining what they check.
+
+Why it matters: Clear docstrings help reviewers understand intent and help LLMaJ evaluate coverage.
+
+How to fix:
+
+python
+
+Copy
+# Bad
+def test_output():
+    ...
+
+# Good
+def test_output_file_has_correct_format():
+    """Verify output.json contains 'status' and 'items' fields."""
+    ...
+anti_cheating_measures
+What it checks: Whether it's difficult for agents to cheat on the task.
+
+Why it matters: Agents might try to:
+
+Look inside test files for answers
+Edit data files to pass tests
+Delete or modify tests
+Find solutions in git history
+How to fix:
+
+Don't expose test logic to the task environment
+Use checksums or external validation
+If cloning repos, pin to specific commits
+Make tests verify actual computation, not just outputs
+structured_data_schema
+What it checks: If the agent produces structured data (JSON, CSV, etc.), is the exact schema described?
+
+Why it matters: Ambiguous schemas lead to false failures.
+
+How to fix:
+
+markdown
+
+Copy
+Output JSON with this structure:
+```json
+{
+  "status": "success" | "error",
+  "count": <integer>,
+  "items": [
+    {"id": <int>, "name": <string>}
+  ]
+}
+
+Copy
+
+---
+
+### hardcoded_solution
+
+**What it checks:** Whether the solution demonstrates a command sequence rather than just outputting the answer.
+
+**Why it matters:** Solutions should show HOW to solve the task, not just provide the answer.
+
+**How to fix:**
+```bash
+# Bad: Just outputs the answer
+echo "42" > /output/result.txt
+
+# Good: Shows the derivation
+cd /app
+python calculate.py input.txt > /output/result.txt
+file_reference_mentioned
+What it checks: If tests check for specific files, are those filenames mentioned in instruction.md?
+
+Why it matters: Agents can't know to create files they weren't told about.
+
+How to fix:
+
+markdown
+
+Copy
+Save your results to /output/analysis.json
+Quick Reference Table
+behavior_in_task_description	Tests match instructions	Add requirements to instruction.md
+behavior_in_tests	Instructions have tests	Add tests for requirements
+informative_test_docstrings	Tests have docstrings	Add docstrings to all tests
+anti_cheating_measures	Hard to cheat	Remove cheating opportunities
+structured_data_schema	Schema is explicit	Define exact data format
+hardcoded_solution	Solution shows process	Derive answers, don't hardcode
+file_reference_mentioned	Output files named	Mention all output filenames
+Debugging LLMaJ Failures
+When LLMaJ checks fail:
+
+Read the feedback — LLMaJ explains why it failed
+Review the specific issue — Which test/requirement is problematic?
+Make targeted fixes — Don't rewrite everything
+Re-run checks — Verify the fix worked
+
+Review Guidelines
+Guidelines for peer reviewers evaluating submitted tasks.
+
+Review Philosophy
+As a reviewer, you're ensuring quality for the benchmark. Your goal is to:
+
+Catch issues before they enter the dataset
+Help contributors improve their tasks
+Maintain consistency across submissions
+Review Checklist
+1. Read the Task Description
+ Instructions look human-written (not LLM-generated)
+ Requirements are clear and unambiguous
+ All constraints are explicitly stated
+ Absolute paths used throughout
+Think like a malicious agent: Does the description give extra information that makes cheating easier?
+
+2. Review Tests
+ Every requirement has a corresponding test
+ Tests have informative docstrings
+ Tests verify behavior, not implementation
+ No brittle string matching
+ No hardcoded thresholds (or thresholds are reasonable)
+3. Check Solution
+ Solution demonstrates the process (not just outputs answer)
+ Commands are deterministic
+ Works in the provided environment
+4. Verify Metadata
+ Difficulty matches expected pass rate
+ Category is appropriate
+ Time estimates are realistic
+ Timeout is sufficient but not excessive
+5. Watch Agent Runs
+On the task viewer:
+
+Watch the terminal recording
+If agent fails, is it failing for a good reason?
+Check the analysis for identified issues
+Read the debug pane
+Common Issues to Flag
+Task Description Problems
+Ambiguous requirements	"Make it better", "fix the issues"
+Missing output specs	Tests check files not mentioned
+Relative paths	./data/file.txt instead of /app/data/file.txt
+Implicit assumptions	Assumes knowledge not in instructions
+Test Problems
+Brittle tests	Exact string matching
+Missing coverage	Requirements without tests
+Order dependency	Tests that must run in sequence
+Implementation testing	Parsing source code
+Solution Problems
+Hardcoded answers	echo "42" > result.txt
+Non-deterministic	Uses random without seed
+Incomplete	Missing steps
+Over-complex	Unnecessarily convoluted
+Specific Things to Watch
+Testing Behavior
+It is almost always better to test a behavior by actually running the code than trying to statically analyze it.
+
+Flag: Tests that grep through source code looking for patterns.
+
+Tool Specifications
+Task instructions shouldn't mention specific tools unless there's a way to verify they were used.
+
+Flag: "Use vim to edit the file" (can't verify vim was used).
+
+Randomness
+Tasks involving randomness MUST NOT assume the solution matches that same random order.
+
+Flag: Tests that depend on specific np.random.seed values.
+
+Test Complexity
+Long test files are almost always wrong since more tests means more opportunities for error.
+
+Flag: test_outputs.py with 20+ tests for a simple task.
+
+Data Formats
+Be especially paranoid about specifying data formats.
+
+Flag: "Output a CSV" without specifying whether it needs headers.
+
+Anti-Cheating
+Think about how agents could cheat:
+
+Decompile programs to find hidden answers
+Replace programs with dummy versions
+Delete or modify tests
+Access newer git commits
+Rubrics
+Structured, objective checks for evaluating agent execution traces.
+
+What are Rubrics?
+Rubrics are binary checks over the agent's trace that:
+
+Award points for required, meaningful steps that move the task forward
+Penalize incorrect, unsafe, or wasteful steps
+Provide a graded view of trajectory quality beyond unit and functional tests
+They connect:
+
+The task spec & assets (e.g., task.toml, solve.sh, Dockerfile, data files)
+The deterministic tests (e.g., test_outputs.py) that verify final state
+The agent's trace (commands + stdout/stderr)
+Rubrics are used to grade agent traces for task quality beyond unit/functional tests.
+
+Authoring Rubrics
+Goal: If an agent follows a correct (or equivalent) procedure, the rubric yields a high score; if it deviates or cuts corners, the score drops in a diagnostic way.
+
+Authoring Process
+Determine the (ideally optimal) sequence of steps that solve the task correctly
+List each key step in solve.sh that is necessary for success
+For every step, define one or more checks that confirm the step occurred (or its visible effect)
+Add checks for edge cases and safety (what must not occur)
+Do not mirror deterministic outcome tests; focus on the process to arrive at the correct answer
+Writing Checks
+Phrase as Positive Sentences with Binary Evaluation
+Always phrase criteria positively and use positive or negative points to reflect desirability.
+
+Agent runs tests and surfaces results in the trace, +3	Agent does not call X, +2
+Agent calls rm -rf /, −5	Agent avoids calling dangerous commands, +2
+Never mix a positive weight with a negative sentence.
+
+Actions That Should Happen (Award Points)
+Created/modified content	"Agent creates file <path> (trace shows command and success output)"	+2
+Edited a line/config	"Agent updates line/setting <pattern> (trace shows command + output showing change)"	+2
+Inspected before acting	"Agent previews inputs (e.g., head/tail/cat/grep with shown output) before transforming"	+1
+Verified outputs	"Agent runs a verification command (regex/grep/diff/checksum/schema) and surfaces the result in trace"	+2
+Ran tests	"Agent executes tests (pytest, run_test.sh) and shows summary/exit code"	+3
+Recovered from error	"Agent addresses a surfaced error (missing dep, bad path) and re-runs successfully"	+2
+Used appropriate tools/flags	"Agent uses tool expected by spec (e.g., jq for JSON, sed -i for in-place edit) with meaningful output"	+1
+Agent reasoning	"Agent did understand that the JSON file is corrupted and is missing a double quote on line 4"	+1
+Actions That Should Not Happen (Penalize)
+Destructive ops	"Agent calls dangerous command (e.g., rm -rf /, find / at root without constraint)"	−5
+Scope violations	"Agent operates outside the task workspace without task reason (e.g., writes to /etc when not required)"	−3
+Leaking sensitive data	"Agent echoes secrets/keys into the trace"	−5
+Useless repetition	"Agent repeats the same failing command ≥3 times without modification"	−1
+Hallucinated success	"Agent claims success while trace shows failing tests/verification"	−3
+Skipping verification	"Agent produces artifact but does not run any verification visible in trace"	−2
+Shotgun search at root	"Agent searches entire filesystem (grep -R /, find /) without narrowing"	−3
+Redundant steps	"Agent checks the JSON format while the format is described in the task"	−1
+Important: The rubric will be used to evaluate an agent's trace. If you can't see it in the trace, you can't grade it. Rephrase criteria so they depend on trace evidence (e.g., include command output snippets).
+
+Points & Weights (how to assign values)
+Choose an importance tier for each check
+Critical (±5): Safety, core correctness behaviors (running tests, avoiding destructive ops), key steps without which success is unreliable.
+Major (±3): Strongly recommended steps that materially affect solution reliability/quality (verification, recovery).
+Minor (±1 to ±2): Good practice and hygiene (inspection before transform, showing outputs, using appropriate tooling).
+Use negative values for undesirable events; positive values for desirable events. Keep sentences positive in form.
+
+Coverage & balance
+Ensure every essential step required to solve the task is represented by at least one positive check. [Include at least five checks for a task]
+Include edge-case & safety penalties where relevant.
+Avoid double-counting (one behavior → one check, unless there are clearly distinct aspects).
+Score shape
+Target a max process score around 10–20 points per task (enough granularity without noise).
+Ensure that scores reflect the quality of an agent's trace. For example, Score(optimal correct trace) > Score(correct but sub-optimal trace) >> Score(incorrect or unsafe trace)
+Template File
+Use a simple rubrics.txt file. One check per line:
+
+
+Copy
+<Positive sentence describing trace-evidenced behavior>, <integer points>
+Example rubrics.txt
+
+Copy
+Agent executes tests and surfaces results in the trace, +3
+Agent previews inputs before transforming (trace shows head/grep/cat with output), +1
+Agent verifies produced artifact via command (regex/checksum/schema) and includes verification output, +2
+Agent recovers from a surfaced error (fix then rerun succeeds), +2
+Agent uses appropriate tool/flag for the task (e.g., jq/sed -i) with meaningful output, +1
+Agent shows command outputs sufficient to establish that the step occurred, +1
+Agent calls a dangerous command (e.g., rm -rf /, find / at root without constraint), -5
+Agent operates outside the task workspace without task reason, -3
+Agent echoes secrets/credentials into the trace, -5
+Agent repeats the same failing command ≥3 times without modification, -1
+Agent claims success while tests/verification are failing in the trace, -3
+Agent produces an artifact but does not run any verification visible in the trace, -2
+Authoring Checklist
+Before submitting your rubric, verify:
+
+Each essential step in the optimal sequence has at least one positive check
+Edge cases and safety are covered via penalty checks
+Every check is binary
+Phrasing is positive; negative behaviors use negative points, not negative wording
+No duplication/double counting
+Point values reflect importance: critical (±5), major (±3), minor (±1–2)
+A correct trajectory scores near the top; sub-optimal lower; incorrect/unsafe low/negative
+Policy
+Rubrics evaluate the agent's execution trace only. Do not require live environment inspection or reading files beyond what appears in the trace.
+Rubrics must map to the preferred/optimal sequence of steps. They should capture both the correct steps and edge cases, distinguishing correct vs. incorrect solutions while grading the quality of the step-by-step process.
+Reviewer Guide
+When reviewing rubrics created by others, check the following:
+
+Coverage & Correctness
+Coverage	All steps to solve the task optimally are represented by rubric checks
+Beyond solve.sh	Checks extend beyond solve.sh and unit tests to include the full process
+Edge-case/safety	Penalties cover dangerous or disallowed behavior likely for this task
+Trace-only	Every check can be verified from an agent's trace; no environment inspection required
+Quality & Scoring
+Positive phrasing	Criteria use positive sentences with appropriate positive/negative points
+Importance tiers	Critical/major/minor assignments make sense
+No duplicates	Each criterion uniquely checks for a condition
+Binary checks	No subjective or ambiguous language
+Discriminative	Oracle runs should score high; weak/incorrect traces should score lower
+Sanity Runs
+When available, use sanity runs to help review rubrics:
+
+Oracle traces (agent with access to solve.sh): tests pass; rubric checks related to solve.sh steps pass
+Failed/weak traces (from CI or known bad runs): rubric identifies failures/anti-patterns and reduces score accordingly
+CI Integration
+Judge Model
+A frontier model (e.g., Claude Haiku 4.5, OpenAI o4-mini) is used as the rubric LLM judge for evaluating agent traces, after calibrating on a small sample to identify the model with highest agreement with human annotation.
+
+Pipeline
+Parse rubric file: one check per line (<sentence>, <points>)
+Prepare two inputs:
+Agent trace based on solve.sh (reference run)
+Agent trace (keep tail of all tool outputs to keep context modest; if still too long, include only the tail)
+For each check:
+Prompt the judge to return YES/NO strictly based on the provided trace and task.toml
+If YES, add the check's points (positive or negative). If NO, add 0.
+Long traces: If truncation was required due to context size, apply an additional −10 penalty (label: "Trace too long; tail-only evaluated")
+Expectations: Score(Trace based on solve.sh) >> Score(Failed or low-quality agent traces)
+Rubrics are computed on all traces, even those that fail unit/functional tests
+Full Examples
+Example 1: sanitize-git-repo
+Goal: Sanitize a repo of all API keys/tokens using pattern-based detection, not hardcoded strings; then verify no secrets remain.
+
+
+Copy
+Executes a repository-scope command from the repo root (e.g., `pwd` and `git status` or `ls -la`/`tree`) with stdout/stderr in the trace, +1
+Executes a repo-wide scan for AWS access key IDs using a general pattern (e.g., `grep -rE 'AKIA[0-9A-Z]{16}'` or equivalent) and prints matches or counts, +3
+Replaces all AWS access key IDs with the exact placeholder `<your-aws-access-key-id>` using an automated method (e.g., `sed -i -E ...`) with command output confirming edits, +3
+Executes a scan for AWS secret access keys (context- or pattern-based) and prints matches or counts, +2
+Replaces all AWS secret access keys with the exact placeholder `<your-aws-secret-access-key>` using an automated method with command output confirming edits, +3
+Executes a scan for GitHub tokens using a general pattern (e.g., `grep -rE 'gh[pousr]_[A-Za-z0-9]{20,}'`) and prints matches or counts, +3
+Replaces all GitHub tokens with the exact placeholder `<your-github-token>` using an automated method with command output confirming edits, +3
+Executes a scan for HuggingFace tokens using a general pattern (e.g., `grep -rE 'hf_[A-Za-z0-9]{29,}'`) and prints matches or counts, +2
+Replaces all HuggingFace tokens with the exact placeholder `<your-huggingface-token>` using an automated method with command output confirming edits, +3
+Scopes scans/edits to repository files (e.g., `find . -type f -not -path "./.git/*" ...`) and prints paths or counts confirming scope, +2
+Re-executes the repository scans after sanitization with the same (or stricter) patterns and prints **zero findings**, +5
+Commits sanitized changes with a clear message (e.g., `git commit -m "sanitize: remove secrets"`) and prints `git status` or `git diff --name-only`, +1
+Executes task tests and prints a pass/fail summary or exit code in the trace, +2
+Uses hardcoded literal values instead of general patterns for detection (patches only specific instances), -4
+Executes scans outside the repository (e.g., `grep -R /` or `find /`) without narrowing to the repo, -3
+Prints live secrets/tokens into the trace (no redaction), -5
+Deletes or modifies non-contaminated files as part of "sanitization" (e.g., `rm` outside intended targets), -3
+Rewrites git history destructively without task instruction and omits verification of the new state, -2
+Declares success without executing post-sanitization re-scans, -3
+Repeats the same failing command ≥3 times without any modification, -1
+Example 2: regex-log
+Goal: Craft regex(es) to extract dates and IPv4 addresses from logs without false positives (avoid matches where alphanumeric is attached to the token).
+
+
+Copy
+Writes the regex to `/app/regex.txt` using a single here-doc or redirection command and leaves exactly one regex line in the file, +5
+Executes the task tests (or an equivalent evaluation using Python `re.findall(..., re.MULTILINE)`) and prints a pass/fail summary or exit code in the trace, +5
+Writes the regex to a different path (not `/app/regex.txt`), -5
+Writes multiple lines or an empty file to `/app/regex.txt`, -2
+Never executes any evaluation of the regex (no shell or Python check), -3
+Edits unrelated files or searches from filesystem root without narrowing (e.g., `grep -R /`), -3
+Repeats the same failing command ≥3 times without any modification, -1
+Common Errors
+Anti-patterns and mistakes to watch for when creating or reviewing tasks.
+
+Instruction Problems
+Ambiguous Language
+"Make it better"	"Reduce runtime by 50%"
+"Fix the issues"	"Fix the 3 failing tests"
+"Handle errors properly"	"Return HTTP 400 for invalid input"
+"Optimize the code"	"Achieve O(n log n) complexity"
+Relative Paths
+yaml
+
+Copy
+# Bad
+instruction: "Edit config/settings.json"
+
+# Good  
+instruction: "Edit /app/config/settings.json"
+Missing Output Specs
+yaml
+
+Copy
+# Bad
+instruction: "Process the data and save results"
+
+# Good
+instruction: "Process /data/input.csv and save results to /output/results.json"
+Unverifiable Tool Requirements
+yaml
+
+Copy
+# Bad - Can't verify vim was used
+instruction: "Use vim to edit the file"
+
+# Good - Verifies the result
+instruction: "Change the port from 8080 to 3000 in /app/config.txt"
+Test Problems
+Brittle String Matching
+python
+
+Copy
+# Bad - Breaks with formatting changes
+def test_output():
+    output = open("/output/log.txt").read()
+    assert output == "Processing complete.\n"
+
+# Good - Checks for key content
+def test_output():
+    output = open("/output/log.txt").read()
+    assert "complete" in output.lower()
+Implementation Testing
+python
+
+Copy
+# Bad - Tests implementation, not behavior
+def test_uses_sorted():
+    code = open("/app/main.py").read()
+    assert "sorted(" in code
+
+# Good - Tests actual behavior
+def test_output_is_sorted():
+    result = process_data()
+    assert result == sorted(result)
+Missing Docstrings
+python
+
+Copy
+# Bad
+def test_1():
+    assert process("") == []
+
+# Good
+def test_empty_input_returns_empty_list():
+    """Verify that empty string input returns an empty list."""
+    assert process("") == []
+Order-Dependent Tests
+python
+
+Copy
+# Bad - test_2 depends on test_1
+def test_1_setup():
+    global data
+    data = load_data()
+
+def test_2_process():
+    result = process(data)
+    assert result
+
+# Good - Each test is independent
+def test_process():
+    data = load_data()
+    result = process(data)
+    assert result
+Hardcoded Random Values
+python
+
+Copy
+# Bad - Assumes specific random output
+def test_random_sample():
+    result = random_sample(data)
+    assert result == [3, 7, 2]
+
+# Good - Tests properties
+def test_random_sample_size():
+    result = random_sample(data, n=3)
+    assert len(result) == 3
+    assert all(item in data for item in result)
+Solution Problems
+Hardcoded Answers
+bash
+
+Copy
+# Bad - Just outputs the answer
+echo "The answer is 42" > /output/result.txt
+
+# Good - Derives the answer
+python /app/calculate.py > /output/result.txt
+Non-Deterministic Commands
+bash
+
+Copy
+# Bad - Output order varies
+ls /data/ > /output/files.txt
+
+# Good - Consistent ordering
+ls /data/ | sort > /output/files.txt
+Missing Error Handling
+bash
+
+Copy
+# Bad - Continues after errors
+cd /nonexistent
+do_something
+
+# Good - Fails fast
+set -e
+cd /app
+do_something
+Cheating Opportunities
+Exposing Test Logic
+dockerfile
+
+Copy
+# Bad - Agent can read test files
+COPY tests/ /tests/
+Tests should be mounted at runtime, not baked into the image.
+
+Answer in Git History
+dockerfile
+
+Copy
+# Bad - Agent could see newer commits with answers
+RUN git clone https://github.com/example/repo.git
+
+# Good - Pin to specific commit
+RUN git clone https://github.com/example/repo.git \
+    && cd repo && git checkout abc123
+Editable Data Files
+If tests check data files, ensure agents can't just edit them to pass:
+
+python
+
+Copy
+# Bad - Agent could just write the expected values
+def test_processed_data():
+    data = json.load(open("/data/output.json"))
+    assert data["total"] == 42
+
+# Good - Verify computation, not just final value
+def test_computation():
+    input_data = json.load(open("/data/input.json"))
+    output_data = json.load(open("/data/output.json"))
+    expected = sum(item["value"] for item in input_data)
+    assert output_data["total"] == expected
+Difficulty Issues
+Too Easy
+Signs a task might be too easy:
+
+Single-step solution
+Common tutorial topic
+Simple API usage
+Pattern matching suffices
+Too Hard / Unfair
+Signs a task might be problematic:
+
+Requires unavailable information
+Environment is unreliable
+Success depends on luck
+Requirements are contradictory
+Quick Reference
+Instructions	Relative paths	Use absolute paths
+Instructions	"Better", "properly"	Specific metrics
+Tests	String matching	Content checks
+Tests	No docstrings	Add docstrings
+Tests	Implementation checks	Behavior checks
+Solution	Echo answers	Derive answers
+Solution	Random without seed	Add seeds
+Cheating	Tests in image	Mount at runtime
+Cheating	Mutable data	Verify computation
+Quick Start Guide
+Get up and running with TerminalBench in just a few minutes. This guide covers everything you need to start creating tasks.
+
+Prerequisites
+Before you begin, make sure you have:
+
+Access to the Snorkel Expert Platform
+Joined the Slack channel #ec-terminus-submission
+Joined the Notification channel #ec-terminus-announcements
+Received your API key via email
+Environment Setup
+Once you have the prerequisites taken care of, choose your setup path:
+
+Option A: Quick Setup with uv (Recommended)
+For the fastest setup experience, use uv, a modern Python package manager:
+
+1. Install uv:
+
+bash
+
+Copy
+curl -LsSf https://astral.sh/uv/install.sh | sh
+2. Install Harbor (Python 3.12 and 3.13 are supported):
+
+bash
+
+Copy
+uv tool install harbor==0.1.25 --python 3.13
+3. Configure your API keys:
+
+bash
+
+Copy
+export OPENAI_API_KEY=<your-portkey-api-key>
+export OPENAI_BASE_URL=https://api.portkey.ai/v1
+Tip: Add these to your ~/.bashrc or ~/.zshrc for persistence.
+
+4. You're ready! to start working and submitting your tasks!
+
+Note: You still need Docker Desktop (v24.0.0+) installed and running.
+
+Option B: Manual Setup
+If you prefer a traditional pip installation or need more control, follow these steps:
+
+We have found the following VS Code extensions will improve your experience with TerminalBench:
+
+Docker — For managing containers in VS Code;
+Python — For highlighting syntax, linting, etc.;
+Markdown — For editing markdown files (instruction.md);
+TOML — For editing task.toml files;
+GitLens — For an improved Git integration;
+
+Project Overview
+Terminus is Snorkelʼs effort to build a high-quality dataset in the style of Terminal-Bench.
+● Terminal-Bench is a benchmark for evaluating how well AI agents can accomplish complex tasks in a terminal
+environment
+● Features multi-step tasks to be completed via a command line interface CLI
+● Examples include:
+○ Compiling and packaging a code repository
+○ Downloading a dataset and training a classifier on it
+○ Setting up a server
+Your role as an EC is to create these tasks, along with an Oracle solution and associated tests that verify its correctness
+● These tasks should be challenging, targeting a pass rate of 80% from SOTA models (e.g. GPT5 Codex, Claude Code)
+● Tasks will be created locally and submitted to the Snorkel Expert Platform where they will undergo CI validation and peer
+review
+Snorkel AI | Proprietary & Confidential | Not for distribution
+Task Difficulty Ratings
+The following ratings will be applied to tasks to categorize their difficulty. Ratings are based on the accuracy of GPT5 and
+Sonnet 4.5 when attempting to complete the task.
+NOTE Since these ratings are based off model performance, you will not know how a task will be classified until after submitting.
+If your task results in a “trivialˮ rating, you should iterate on the task to increase difficulty to be at least “easyˮ.
+Task Components - Part 1 Files (old TB version)
+● Instruction/Task Description (task.yaml)
+○ Clear and self-contained description of the task to be accomplished
+○ Includes references to relevant resources necessary for task completion, rules and constraints, and description of
+success criteria
+○ Also contains metadata not available to the agent at runtime
+● Docker Environment
+○ Dockerfile
+■ Base image that fully sets up environment, including all required tools, resources, and dependencies
+■ Should run without privileged mode
+○ Docker-compose.yaml
+■ Config file that defines orchestration for the task
+■ Should reference base image from Dockerfile and include any necessary environment variables or
+mounted resources
+● Oracle Solution (solution.sh)
+○ Step-by-step solution contained within a shell script
+○ Reliably and accurately completes the task
+Snorkel AI | Proprietary & Confidential | Not for distribution
+Task Components - Files
+● Task Instructions (instruction.md)
+○ Clear and self-contained description of the task to be accomplished
+○ Now a separate file from the task description
+● Task Description (task.toml)
+○ Configuration and metadata file (replaces task.yaml).
+○ Uses TOML format with nested sections for task configuration, metadata, and environment settings.
+● environment/ Folder
+○ The environment definition must be placed in an environment/ folder. This prevents accidentally copying
+task.toml, instruction.md, or test files into the container.
+○ Required files based on environment type
+■ For Docker Environment: environment/Dockerfile or environment/docker-compose.yaml
+● environment/Dockerfile
+○ Base image that fully sets up environment, including all required tools, resources, and
+dependencies
+○ Should run without privileged mode
+● Docker-compose.yaml
+○ Config file that defines orchestration for the task
+○ Should reference base image from Dockerfile and include any necessary environment
+variables or mounted resources
+Task Components - Part 2 Files cont.) (old TB version)
+● run-tests.sh
+○ Script to execute and validate end-to-end evaluation of task
+○ Coordinates running the agent within the defined environment, invokes test cases or success criteria checks,
+produces structured output that indicate task completion status
+○ Must be deterministic and callable directly from project root
+● Python tests
+○ Series of deterministic Python scripts containing unit tests
+○ Check task completion based on the final state of the environment
+● Optional] Supporting DataFiles
+○ Any additional inputs (e.g. data, config files, etc.) that are required for the task
+● Optional] Custom Tools
+○ Custom tools that can be used by the agent
+○ Can be delivered in multiple ways, from source code files to companion containers
+Snorkel AI | Proprietary & Confidential | Not for distribution
+Task Components - Files (cont.)
+● Oracle Solution (solution/solve.sh)
+○ Expert-authored, step-by-step solution contained within a shell script
+○ Reliably and accurately completes the task
+○ Task must pass Oracle solution to be accepted
+● Tests (tests/test.sh)
+○ Script to execute and validate end-to-end evaluation of task
+○ The test script must be named tests/test.sh (renamed from run-tests.sh).
+○ This script installs test dependencies and verifies the agent completed the instruction.
+○ The test script must produce a reward file in /logs/verifier/
+● Python tests (tests/test_outputs.py)
+○ Series of deterministic Python scripts containing unit tests
+○ Check task completion based on the final state of the environment
+● Optional Components
+○ Supporting data files
+■ Any additional inputs (e.g. data, config files, etc.) that are required for the task
+○ Custom tools
+■ Custom tools that can be used by the agent
+■ Can be delivered in multiple ways, from source code files to companion containers
+○ Multiple containers
+■ Complex multi-service environments
+Task Components - Metadata
+● Pass Rate Difficulty Model Performance)
+○ Determined by model performance post-submission
+○ Leave as “unknownˮ
+● Difficulty Time Estimate)
+○ Estimated time that completing the task would take for both a junior and a senior software engineer
+○ "expert_time_estimate_min" and "junior_time_estimate_min"
+● Task Type
+○ Label for the task according to the standard 9-option taxonomy
+○ Captures the primary theme, topic, or activity of the task
+● Task Tags
+○ 36 descriptive keyword tags that capture concepts relevant to the task (e.g. text-editing, vim, python, etc.)
+○ No pre-existing taxonomy, come up with any relevant tags
+
+Example instruction.md
+# Fix Empty Input Bug
+Your task is to fix the bug in /app/main.py that causes
+the application to crash when processing empty input.
+## Requirements
+The fix should:
+1. Handle empty string input gracefully
+2. Return an empty list instead of crashing
+3. Not modify any other behavior
+## Files
+- Input: `/app/main.py`
+- Output: Modified `/app/main.py`
+This file contains the task instructions in markdown format:
+Snorkel AI | Proprietary & Confidential | Not for distribution
+Example task.toml
+version = "1.0"
+[metadata]
+author_name,author_email -> "anonymous"
+difficulty = "medium"
+category = "debugging"
+tags = ["python", "memory-leak", "debugging"]
+[verifier]
+timeout_sec = 120.0
+[agent]
+timeout_sec = 600.0
+[environment]
+build_timeout_sec = 600.0
+docker_image = "some-org/some-name:some-tag"
+cpus = 1
+memory_mb = 2048
+storage_mb = 10240
+
+Task Design Requirements
+● Multi-Step
+○ Tasks requiring chaining multiple commands, handling intermediate states
+○ Not solvable with a single command or episode of commands
+● Testable
+○ Must be fully specified so that agent can attempt to complete the task without ambiguity
+○ Must be able to design unit tests to determine if final state of environment is correct
+● Unique
+○ Tasks should be unique and distinct from all existing tasks in the public Terminal-Bench benchmark
+○ Should also be unique from other tasks submitted for this project
+● No Privileged Ops
+○ Tasks must not require root-level privileges or unsafe Docker settings like --privileged
+● Standalone
+○ Tasks must run to completion without additional user input after start
+○ All parameters must be provided via files, flags, environment variables, or in the task.toml
+● Interacts with the Environment
+○ Looking for tasks that interact with the agent through the terminal
+○ For example: Avoid tasks based on data structures/algorithms.
+■ OK for it to be a sub-component of the tasks, but shouldnʼt be the main component/focus
+Snorkel AI | Proprietary & Confidential | Not for distribution
+● All python unit tests all have to pass at least once across all 10 agent
+runs
+● The Claude and ChatGPT agents cannot have 100% accuracy
+models canʼt pass
+● Oracle solution needs to pass
+● NOP shouldn't pass
+
+Task Submission Checklist
+| 15
+● All behavior checked in the test cases is described in the task instruction.
+● All behavior described in the task instruction is checked in the unit tests.
+● My test cases have informative docstrings that describe which behavior they check. It is hard for the agent to cheat on my
+task (e.g. by editing data files, looking inside files for strings that represent solutions, training on the test set, etc.).
+● My task.toml was written by a human.
+● My solution/solve.sh was written by a human (with minimal help from a language model).
+● If the agent produces structured data (e.g. it is tasked with building an API) the exact schema is described in the task.toml
+or a separate file.
+● If my task uses external dependencies (e.g. Docker images, pip packages, etc.) their versions are pinned to ensure
+reproducibility.
+● I ran this task using agent with a powerful model (e.g., GPT5. For failing runs (which are expected for harder tasks!, I've
+added an analysis below to confirm the task itself is valid. Hint: tb tasks debug can help)
+● I formatted and linted the task Ruff.
+Snorkel AI | Proprietary & Confidential | Not for distribution
+High-Level Tasking Workflow
+Tasking will be performed through the terminus-project-v2 project on the Snorkel Expert Platform.
+Once you are granted access, you should:
+1. Install harbor so that you can use the commands used for running the agents and programmatic checks locally (pip install
+harbor)
+2. Come up with a task idea or select one from the Task Gallery
+3. Go to the training site and download the task file skeleton
+4. Rename the task folder to match your intended task name
+5. Create your task instructions, an Oracle solution that passes, and Python tests
+6. Iterate on your submission until all CI/Evals pass
+7. Create a ZIP file for your task folder
+8. Submit your ZIP file on the Platform
+We expect submission tasks to take 25 hours based on task difficult
+LLMaJ  Part 1
+● Behavior in Task Description
+○ Checks whether all behaviors asserted by the tests are explicitly described in task.toml
+○ Fails if the tests enforce implementation details that the task does not specify
+● Behavior in Tests
+○ Checks whether all behaviors described in the task.toml are actually tested (inverse of above)
+○ Fails if one or more specified behaviors from the task is not fully tested
+● Informative Test Docstrings
+○ Checks for a clear and informative docstring describing each test
+○ Fails if tests are missing docstrings or have poorly written ones
+● Anti Cheating Measures
+○ Checks that tests are executed after agent runs and there is no path to cheat by reading tests
+○ Fails if there are ways for an agent to pass the tests by cheating instead of actually implementing functionality
+● Structured Data Schema
+○ If applicable, checks that any data files implied by the tests are specified in the task.toml or a separate schema
+file
+○ Fails if any tests imply a data file that is not specified in the task
+Snorkel AI | Proprietary & Confidential | Not for distribution
+LLMaJ  Part 2
+● Pinned Dependencies
+○ Checks if required dependencies are pinned in the Dockerfile for reproducibility
+○ Fails if any required dependencies are missing a pinned version
+● Typos
+○ Checks for typos in filenames, variables, and instructions
+○ Fails if any typos are found
+● Tests or Solution in Image
+○ Checks to make sure that the Dockerfile does not copy tests or a solution into the image
+○ Fails if Dockerfile does copy tests or solution into image
+● Test Deps in Image
+○ Checks to make sure that test dependencies are installed at test time (e.g., in tests/test.sh)
+○ Fails if dependencies are installed into the image/during build
+● Hardcoded Solution
+○ Checks that the solution script writes a full source file implementing required behavior, not a hard-coded answer
+○ Fails if the solution script merely echoes a final answer instead of implementing logic
+● File Reference Mentioned
+○ Checks that the required output file names given by the tests are specified in the task.toml
+○ Fails if the task.toml does not mention the required output names that the tests check for
+CI Evals - Part 1
+● Check Test File References
+○ Operates on: test_outputs.py, task.toml
+○ Checks: all file references in test_outputs.yaml are mentioned in the task.toml - files that appear in both test and
+solution files but not in task.toml are flagged
+○ If fails: either remove the files or add them to the task instructions
+● Validate Task Fields
+○ Operates on: task.toml
+○ Checks: all required fields are present in the task.toml
+○ If fails: add the missing required field
+● Check Canary String
+○ Operates on: task.toml, Dockerfile, solution/solve.sh, test_outputs.py
+○ Checks: the canary string is present at the top of all required files
+○ If fails: add the canary string to the top of all required files
+Snorkel AI | Proprietary & Confidential | Not for distribution
+CI Evals - Part 2
+● Check for Privileged Containers
+○ Operates on: docker-compose.yaml
+○ Checks: for privileged containers in the docker-compose.yaml
+○ If fails: remove any privileged container in the docker-compose.yaml
+● Check PR Files
+○ Operates on: tasks/
+○ Checks: for any files not in the tasks/ directory
+○ If fails: delete or move all files not in the tasks/ directory
+● Check task file sizes
+○ Operates on: all files
+○ Checks: that every file is under 1MB
+○ If fails: any files over 1MB should be removed or condensed
+CI Evals - Part 3
+● Ruff
+○ Operates on: all files
+○ Checks: for Linting errors
+○ If fails: fix any Linting errors
+● Check tests/test.sh Sanity
+○ Operates on: tests/test.sh, task.toml
+○ Checks: if the tests/test.sh file uses uv init or has a task.toml file with global or system-wide keywords
+○ If fails: update tests/test.sh to contain a uv init or uv venv, or add global or system-wide keywords to the task.toml
+Snorkel AI | Proprietary & Confidential | Not for distribution
+CI Evals - Part 4
+● Check Task Absolute Paths
+○ Operates on: task.toml
+○ Checks: that task instructions use absolute paths rather than relative paths
+○ If fails: update instructions to use absolute paths
+● Check Dockerfile References
+○ Operates on: Dockerfile
+○ Checks: if any of solution/solve.sh, tests/test.sh, or test_outputs.py are in the Dockerfile
+○ If fails: remove the forbidden file(s) from the Dockerfile

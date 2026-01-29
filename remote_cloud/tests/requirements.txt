@@ -1,0 +1,5 @@
+# Python test dependencies - all versions are pinned for reproducibility
+pytest==7.4.3
+boto3==1.34.18
+requests==2.31.0
+pyyaml==6.0.1

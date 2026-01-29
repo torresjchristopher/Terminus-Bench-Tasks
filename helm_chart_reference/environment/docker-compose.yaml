@@ -1,0 +1,48 @@
+services:
+  main:
+    build:
+      context: ${CONTEXT_DIR}
+    image: ${MAIN_IMAGE_NAME}
+    command:
+      - sh
+      - -c
+      - sleep infinity
+    environment:
+      - TEST_DIR=${TEST_DIR}
+    volumes:
+      - ${HOST_VERIFIER_LOGS_PATH}:${ENV_VERIFIER_LOGS_PATH}
+      - ${HOST_AGENT_LOGS_PATH}:${ENV_AGENT_LOGS_PATH}
+      - /var/run/docker.sock:/var/run/docker.sock
+    deploy:
+      resources:
+        limits:
+          cpus: ${CPUS}
+          memory: ${MEMORY}
+    networks:
+      - app-network
+    depends_on:
+      app:
+        condition: service_healthy
+
+  app:
+    build:
+      context: ${CONTEXT_DIR}/app
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8080"
+    networks:
+      - app-network
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -f
+        - http://localhost:8080/health
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+networks:
+  app-network:
+    driver: bridge

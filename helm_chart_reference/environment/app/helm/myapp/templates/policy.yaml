@@ -1,0 +1,8 @@
+# Policy template placeholder - replace with real Kyverno policy requiring signed images
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-signed-images
+spec:
+  validationFailureAction: enforce
+  rules: []

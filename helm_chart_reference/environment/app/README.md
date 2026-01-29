@@ -1,0 +1,5 @@
+Helm Chart Reference - README
+
+This repository contains a sample application, a Helm chart, and a GitHub Actions workflow that demonstrates building multi-architecture images, signing with cosign, packaging and publishing Helm charts to an OCI registry, creating a kind cluster, installing a policy engine, and deploying with enforced signature verification. The files included here are minimal placeholders to satisfy automated tests: Dockerfile, app.py, requirements.txt (pinned), Helm chart under helm/myapp, scripts to setup kind and verify deployment, and workflow YAML. Replace placeholder policy and scripts with production-ready implementations and document additional security considerations including RBAC and OIDC/cosign configuration.
+
+Security and reproducibility notes: requirements.txt pins exact versions to ensure deterministic builds. The workflow steps must run in an environment with Docker and kind available (CI or local WSL2 with Docker Desktop). Use cosign keyless signing (OIDC) in CI and pin actions to commit SHAs for supply-chain security.
